@@ -68,7 +68,7 @@ class TestGetNetgearLTEEntry:
         entry.data = {"host": "192.168.5.1"}
         mock_hass.config_entries.async_loaded_entries.return_value = [entry]
 
-        with pytest.raises(NetgearLTECoreMissingError, match="not found"):
+        with pytest.raises(NetgearLTECoreMissingError, match="No Netgear LTE modem found"):
             get_netgear_lte_entry(mock_hass, host="192.168.99.1")
 
 

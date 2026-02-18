@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# Mock homeassistant modules before importing component code
+sys.modules["homeassistant"] = MagicMock()
+sys.modules["homeassistant.core"] = MagicMock()
+sys.modules["homeassistant.const"] = MagicMock()
+sys.modules["homeassistant.exceptions"] = MagicMock()
+sys.modules["homeassistant.config_entries"] = MagicMock()
+sys.modules["homeassistant.helpers"] = MagicMock()
+sys.modules["homeassistant.helpers.typing"] = MagicMock()
 
 
 @pytest.fixture
@@ -47,7 +57,7 @@ def mock_modem() -> MagicMock:
 def mock_config_entry() -> MagicMock:
     """Mock Home Assistant ConfigEntry with netgear_lte data."""
     entry = MagicMock()
-    entry.data = {"host": "192.168.5.1"}
+    entry.data = {"host": "192.168.5.1"}  # Use string key, not mocked constant
     entry.title = "Netgear LM1200"
     entry.runtime_data = MagicMock()
     entry.runtime_data.modem = None  # Will be set with mock_modem when needed

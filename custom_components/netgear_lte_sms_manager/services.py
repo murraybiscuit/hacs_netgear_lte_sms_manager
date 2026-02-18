@@ -6,7 +6,6 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
@@ -71,11 +70,11 @@ async def _service_list_inbox(call: ServiceCall) -> None:
         entry = get_netgear_lte_entry(hass, host)
         modem = ModemConnection(entry.runtime_data.modem)
 
-        LOGGER.info("Fetching SMS inbox from %s", entry.data[CONF_HOST])
+        LOGGER.info("Fetching SMS inbox from %s", entry.data.get("host"))
         sms_list = await modem.get_sms_list()
 
         event_data = {
-            ATTR_HOST: entry.data[CONF_HOST],
+            ATTR_HOST: entry.data.get("host"),
             ATTR_MESSAGES: [msg.to_dict() for msg in sms_list],
         }
 
@@ -120,7 +119,7 @@ async def _service_delete_sms(call: ServiceCall) -> None:
         entry = get_netgear_lte_entry(hass, host)
         modem = ModemConnection(entry.runtime_data.modem)
 
-        LOGGER.info("Deleting %d SMS from %s", len(sms_ids), entry.data[CONF_HOST])
+        LOGGER.info("Deleting %d SMS from %s", len(sms_ids), entry.data.get("host"))
         deleted_count = await modem.delete_sms_batch(sms_ids)
 
         LOGGER.info("Successfully deleted %d SMS", deleted_count)
@@ -164,7 +163,7 @@ async def _service_delete_operator_sms(call: ServiceCall) -> None:
 
         LOGGER.info(
             "Fetching SMS inbox to filter operator messages from %s",
-            entry.data[CONF_HOST],
+            entry.data.get("host"),
         )
         sms_list = await modem.get_sms_list()
 
@@ -191,12 +190,12 @@ async def _service_delete_operator_sms(call: ServiceCall) -> None:
             LOGGER.info(
                 "Deleting %d operator SMS from %s",
                 len(sms_to_delete),
-                entry.data[CONF_HOST],
+                entry.data.get("host"),
             )
             deleted_count = await modem.delete_sms_batch(sms_to_delete)
 
         event_data = {
-            ATTR_HOST: entry.data[CONF_HOST],
+            ATTR_HOST: entry.data.get("host"),
             ATTR_COUNT_DELETED: deleted_count,
             ATTR_OPERATORS: operators,
         }
@@ -240,11 +239,11 @@ async def _service_get_inbox_json(call: ServiceCall) -> dict[str, Any]:
         entry = get_netgear_lte_entry(hass, host)
         modem = ModemConnection(entry.runtime_data.modem)
 
-        LOGGER.info("Fetching SMS inbox JSON from %s", entry.data[CONF_HOST])
+        LOGGER.info("Fetching SMS inbox JSON from %s", entry.data.get("host"))
         sms_list = await modem.get_sms_list()
 
         return {
-            ATTR_HOST: entry.data[CONF_HOST],
+            ATTR_HOST: entry.data.get("host"),
             ATTR_MESSAGES: [msg.to_dict() for msg in sms_list],
         }
 
