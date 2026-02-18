@@ -1,0 +1,250 @@
+# Netgear LTE SMS Manager
+
+[![HACS Badge](https://img.shields.io/badge/HACS-Custom-41BDF5?logo=home%20assistant&logoColor=white)](https://github.com/hacs/integration)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A Home Assistant custom component that extends the core `netgear_lte` integration with comprehensive SMS inbox management capabilities.
+
+## Features
+
+- **List SMS Inbox** - View all messages in the modem inbox
+- **Delete SMS** - Delete specific messages by ID or in bulk
+- **Auto-cleanup Operator SMS** - Automatically remove network operator notifications and balance updates
+- **Verbose Error Handling** - Clear feedback for API compatibility issues and modem communication problems
+- **Event-based Integration** - Fires events for automations and template sensors
+- **Multi-modem Support** - Manage multiple Netgear LTE modems
+
+## Motivation
+
+The core `netgear_lte` component provides SMS event triggers, but the modem SIM card can fill up with operator messages (balance notifications, network updates, etc.), preventing new SMS events from being received. This component fills that gap with tools to manage and clean up the inbox.
+
+## Installation
+
+### Via HACS (Recommended)
+
+1. Open HACS in Home Assistant
+2. Go to "Integrations"
+3. Click the "+" button and search for "Netgear LTE SMS Manager"
+4. Click Install
+5. Restart Home Assistant
+
+### Manual Installation
+
+1. Clone this repository
+2. Copy the `custom_components/netgear_lte_sms_manager` folder into your `config/custom_components/` directory
+3. Restart Home Assistant
+
+## Configuration
+
+No configuration needed! The component auto-detects your`netgear_lte` modem configuration from the core integration.
+
+## Usage
+
+### Service: `list_inbox`
+
+Lists all SMS messages in the modem inbox and fires an event.
+
+```yaml
+service: netgear_lte_sms_manager.list_inbox
+data:
+  host: "192.168.5.1"  # Optional, auto-detects if only one modem
+```
+
+**Event fired:** `netgear_lte_sms_manager_inbox_listed`
+
+Data structure:
+```json
+{
+  "host": "192.168.5.1",
+  "messages": [
+    {
+      "id": 1,
+      "sender": "Dad",
+      "message": "Hi son, how are you?",
+      "timestamp": "2025-02-17T10:00:00Z"
+    }
+  ]
+}
+```
+
+### Service: `delete_sms`
+
+Delete specific SMS messages by their IDs.
+
+```yaml
+service: netgear_lte_sms_manager.delete_sms
+data:
+  host: "192.168.5.1"
+  sms_id: [1, 2, 3]  # ID or list of IDs
+```
+
+### Service: `delete_operator_sms`
+
+Automatically remove SMS from known network operators.
+
+```yaml
+service: netgear_lte_sms_manager.delete_operator_sms
+data:
+  host: "192.168.5.1"
+  operators: ["Orange", "Vodafone", "T-Mobile"]  # Optional, uses defaults if omitted
+```
+
+**Event fired:** `netgear_lte_sms_manager_delete_operator_sms_complete`
+
+### Service: `get_inbox_json`
+
+Get inbox as JSON (for template sensors and integrations).
+
+```yaml
+service: netgear_lte_sms_manager.get_inbox_json
+data:
+  host: "192.168.5.1"
+```
+
+## Automation Examples
+
+### Clean up operator SMS daily
+
+```yaml
+automation:
+  - alias: "Clean up operator messages daily"
+    trigger:
+      platform: time
+      at: "02:00:00"
+    action:
+      service: netgear_lte_sms_manager.delete_operator_sms
+      data:
+        host: "192.168.5.1"
+```
+
+### List inbox on demand
+
+```yaml
+automation:
+  - alias: "List SMS inbox"
+    trigger:
+      platform: template
+      value_template: "{{ is_state('input_boolean.refresh_sms_inbox', 'on') }}"
+    action:
+      - service: netgear_lte_sms_manager.list_inbox
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.refresh_sms_inbox
+```
+
+## Troubleshooting
+
+### ERROR: No netgear_lte entries configured
+
+Ensure the core `netgear_lte` integration is set up first. This component requires at least one Netgear LTE modem to be configured.
+
+### ERROR: API compatibility issue
+
+This error indicates a breaking change in the `eternalegypt` library. Check:
+- Home Assistant version is 2025.1.0 or newer
+- `netgear_lte` component is up to date
+- Report the issue with the exact error message
+
+## Architecture
+
+This component is designed as a stateless helper that wraps the core `netgear_lte` modem connection:
+
+```
+Home Assistant
+    ├─ netgear_lte (core)
+    │   ├─ Modem connection
+    │   ├─ SMS event listener
+    │   └─ Notify service
+    │
+    └─ netgear_lte_sms_manager (this component)
+        ├─ Models (SMS, ModemConnection wrapper)
+        ├─ Helpers (config entry access)
+        └─ Services (list, delete, filter)
+```
+
+**Dependency Safety:**
+- All external API calls wrapped with verbose error handling
+- Breaking changes detected and reported clearly
+- No forking of core component code
+
+## Development
+
+### Setup
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/hass_netgear_lte_sms_manager
+cd hass_netgear_lte_sms_manager
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+### Testing
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run with coverage
+pytest tests/ --cov=custom_components/netgear_lte_sms_manager
+
+# Run specific test
+pytest tests/test_models.py::TestModemConnection::test_get_sms_list_success
+```
+
+### Code Quality
+
+```bash
+# Format code
+black custom_components tests
+
+# Lint
+ruff check custom_components tests
+
+# Type check
+mypy custom_components
+```
+
+## Roadmap
+
+- [ ] Lovelace card UI for inbox management
+- [ ] SMS automation trigger (keyword matching)
+- [ ] Scheduled auto-cleanup of operator SMS
+- [ ] SMS statistics and analytics
+- [ ] Send SMS via automation actions
+- [ ] SMS filtering and rules engine
+
+## Contributing
+
+Pull requests welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Run tests and linting
+4. Submit a PR with a clear description
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support
+
+If you find this helpful, please consider:
+- ⭐ Starring the repository
+- 🐛 Reporting bugs and requesting features
+- 📖 Improving the documentation
+- 💬 Sharing feedback and suggestions
+
+## Credits
+
+Built on top of:
+- [Home Assistant](https://www.home-assistant.io/)
+- [eternalegypt](https://github.com/eternalegypt/eternalegypt) - Netgear modem API wrapper
+- [netgear_lte core integration](https://www.home-assistant.io/integrations/netgear_lte)

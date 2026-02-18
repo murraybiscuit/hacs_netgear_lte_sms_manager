@@ -1,0 +1,14 @@
+{
+  "domain": "netgear_lte_sms_manager",
+  "name": "Netgear LTE SMS Manager",
+  "codeowners": ["@yourusername"],
+  "config_flow": false,
+  "documentation": "https://github.com/yourusername/hass_netgear_lte_sms_manager",
+  "integration_type": "helper",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0",
+  "homeassistant": "2025.1.0",
+  "issue_tracker": "https://github.com/yourusername/hass_netgear_lte_sms_manager/issues",
+  "dependencies": ["netgear_lte"]
+}

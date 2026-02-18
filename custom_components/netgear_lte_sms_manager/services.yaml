@@ -1,0 +1,59 @@
+{
+  "services": {
+    "list_inbox": {
+      "description": "List all SMS messages in the modem inbox.",
+      "fields": {
+        "host": {
+          "description": "IP address of the Netgear LTE modem (auto-detected if only one configured).",
+          "example": "192.168.5.1",
+          "name": "Modem Host"
+        }
+      },
+      "name": "List SMS Inbox"
+    },
+    "delete_sms": {
+      "description": "Delete one or more SMS messages by ID.",
+      "fields": {
+        "host": {
+          "description": "IP address of the Netgear LTE modem (auto-detected if only one configured).",
+          "example": "192.168.5.1",
+          "name": "Modem Host"
+        },
+        "sms_id": {
+          "description": "Message ID or list of message IDs to delete.",
+          "example": [1, 2, 3],
+          "name": "SMS ID(s)"
+        }
+      },
+      "name": "Delete SMS",
+      "required": ["sms_id"]
+    },
+    "delete_operator_sms": {
+      "description": "Delete SMS from known network operators (balance notifications, etc).",
+      "fields": {
+        "host": {
+          "description": "IP address of the Netgear LTE modem (auto-detected if only one configured).",
+          "example": "192.168.5.1",
+          "name": "Modem Host"
+        },
+        "operators": {
+          "description": "List of operator name patterns to filter. If not provided, uses default list.",
+          "example": ["Orange", "Vodafone", "T-Mobile"],
+          "name": "Operator Patterns"
+        }
+      },
+      "name": "Delete Operator SMS"
+    },
+    "get_inbox_json": {
+      "description": "Get inbox as JSON data (for template sensors and integrations).",
+      "fields": {
+        "host": {
+          "description": "IP address of the Netgear LTE modem (auto-detected if only one configured).",
+          "example": "192.168.5.1",
+          "name": "Modem Host"
+        }
+      },
+      "name": "Get Inbox JSON"
+    }
+  }
+}
