@@ -34,40 +34,35 @@ class NetgearLTESMSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options for the integration."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
-        self.contacts: list[dict] = []
-        self._load_contacts()
-
-    def _load_contacts(self) -> None:
+    def _load_contacts(self) -> list[dict]:
         """Load contacts from stored options."""
         raw = self.config_entry.options.get("contacts", "")
         if not raw:
-            self.contacts = []
-            return
+            return []
         # Try to load as JSON
         if raw.startswith("["):
             try:
-                self.contacts = json.loads(raw)
+                return json.loads(raw)
             except (json.JSONDecodeError, TypeError):
-                self.contacts = []
+                return []
         else:
             # Backward compat: parse csv "name,number" lines
-            self.contacts = []
+            contacts = []
             for line in (l.strip() for l in raw.splitlines() if l.strip()):
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 2:
-                    self.contacts.append(
+                    contacts.append(
                         {
                             "uuid": str(uuid.uuid4()),
                             "name": parts[0],
                             "number": parts[1],
                         }
                     )
+            return contacts
 
-    def _save_contacts(self) -> str:
+    def _save_contacts(self, contacts: list[dict]) -> str:
         """Serialize contacts to JSON string."""
-        return json.dumps(self.contacts, indent=2)
+        return json.dumps(contacts, indent=2)
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Initial step: show menu for configuration sections."""
@@ -81,11 +76,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     ):
         """Manage SMS contacts (add, edit, delete)."""
         if user_input is None:
-            # Show list of contacts
+            # Load contacts for display
+            contacts = self._load_contacts()
             contact_list = "\n".join(
                 [
                     f"{i + 1}. {c['name']} ({c['number']})"
-                    for i, c in enumerate(self.contacts)
+                    for i, c in enumerate(contacts)
                 ]
             )
             return self.async_show_form(
@@ -120,16 +116,27 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             )
 
+        # Load existing contacts
+        contacts = self._load_contacts()
+        
         # Add new contact with auto-generated UUID
         new_contact = {
             "uuid": str(uuid.uuid4()),
             "name": user_input["name"],
             "number": user_input["number"],
         }
-        self.contacts.append(new_contact)
+        contacts.append(new_contact)
 
-        # Return to manage contacts menu
-        return await self.async_step_manage_contacts()
+        # Save updated contacts via options
+        return self.async_create_entry(
+            title="",
+            data={
+                "whitelist_numbers": self.config_entry.options.get(
+                    "whitelist_numbers", ""
+                ),
+                "contacts": self._save_contacts(contacts),
+            },
+        )
 
     async def async_step_whitelist_numbers(
         self, user_input: dict[str, Any] | None = None
@@ -153,11 +160,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 },
             )
 
+        # Load current contacts to preserve them
+        contacts = self._load_contacts()
+        
         # Save options
         return self.async_create_entry(
             title="",
             data={
                 "whitelist_numbers": user_input.get("whitelist_numbers", ""),
-                "contacts": self._save_contacts(),
+                "contacts": self._save_contacts(contacts),
             },
         )
