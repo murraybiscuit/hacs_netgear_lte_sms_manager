@@ -5,13 +5,13 @@
     "@murraybiscuit"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/murraybiscuit/hass_netgear_lte_sms_manager",
+  "documentation": "https://github.com/murraybiscuit/hacs_netgear_lte_sms_manager",
   "integration_type": "helper",
   "iot_class": "local_polling",
   "requirements": [],
   "version": "0.1.0-beta.1",
   "homeassistant": "2025.1",
-  "issue_tracker": "https://github.com/murraybiscuit/hass_netgear_lte_sms_manager/issues",
+  "issue_tracker": "https://github.com/murraybiscuit/hacs_netgear_lte_sms_manager/issues",
   "dependencies": [
     "netgear_lte"
   ]

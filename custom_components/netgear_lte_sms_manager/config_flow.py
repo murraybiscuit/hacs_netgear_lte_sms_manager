@@ -65,43 +65,34 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         return json.dumps(contacts, indent=2)
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
-        """Initial step: show menu for configuration sections."""
-        return self.async_show_menu(
-            step_id="init",
-            menu_options=["manage_contacts", "whitelist_numbers"],
-        )
-
-    async def async_step_manage_contacts(
-        self, user_input: dict[str, Any] | None = None
-    ):
-        """Manage SMS contacts (add, edit, delete)."""
+        """Initial step: display contact list UI."""
         if user_input is None:
             # Load contacts for display
             contacts = self._load_contacts()
-            contact_list = "\n".join(
-                [
-                    f"{i + 1}. {c['name']} ({c['number']})"
-                    for i, c in enumerate(contacts)
-                ]
-            )
+            contact_list_display = "\n".join(
+                [f"{c['name']} ({c['number']})" for c in contacts]
+            ) if contacts else "(no contacts yet)"
+            
             return self.async_show_form(
-                step_id="manage_contacts",
-                data_schema=vol.Schema(
-                    {
-                        vol.Optional("contact_list", default=contact_list): str,
-                        vol.Optional("action"): vol.In(["add_contact", "back"]),
-                    }
-                ),
+                step_id="init",
+                data_schema=vol.Schema({
+                    vol.Optional("action"): vol.In(["add_contact", "edit_contact", "delete_contact"]),
+                }),
                 description_placeholders={
-                    "current_contacts": contact_list or "(no contacts yet)"
+                    "current_contacts": contact_list_display
                 },
             )
-
+        
         action = user_input.get("action")
         if action == "add_contact":
             return await self.async_step_add_contact()
-        else:
-            return await self.async_step_init()
+        elif action == "edit_contact":
+            return await self.async_step_select_contact_to_edit()
+        elif action == "delete_contact":
+            return await self.async_step_select_contact_to_delete()
+        
+        # Return to init if no action
+        return await self.async_step_init()
 
     async def async_step_add_contact(self, user_input: dict[str, Any] | None = None):
         """Form to add a new contact."""
@@ -130,44 +121,74 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         # Save updated contacts via options
         return self.async_create_entry(
             title="",
-            data={
-                "whitelist_numbers": self.config_entry.options.get(
-                    "whitelist_numbers", ""
-                ),
-                "contacts": self._save_contacts(contacts),
-            },
+            data={"contacts": self._save_contacts(contacts)},
         )
 
-    async def async_step_whitelist_numbers(
-        self, user_input: dict[str, Any] | None = None
-    ):
-        """Allow direct phone number whitelist (power users)."""
-        if user_input is None:
-            return self.async_show_form(
-                step_id="whitelist_numbers",
-                data_schema=vol.Schema(
-                    {
-                        vol.Optional(
-                            "whitelist_numbers",
-                            default=self.config_entry.options.get(
-                                "whitelist_numbers", ""
-                            ),
-                        ): str,
-                    }
-                ),
-                description_placeholders={
-                    "help": "One phone number per line. Contacts are preferred; use this for numbers not in your contact list."
-                },
-            )
-
-        # Load current contacts to preserve them
+    async def async_step_select_contact_to_edit(self, user_input: dict[str, Any] | None = None):
+        """Select a contact to edit."""
         contacts = self._load_contacts()
         
-        # Save options
+        if user_input is None:
+            contact_options = {c["uuid"]: f"{c['name']} ({c['number']})" for c in contacts}
+            if not contact_options:
+                return await self.async_step_init()
+            
+            return self.async_show_form(
+                step_id="select_contact_to_edit",
+                data_schema=vol.Schema({
+                    vol.Required("contact_uuid"): vol.In(contact_options),
+                }),
+            )
+        
+        contact_uuid = user_input.get("contact_uuid")
+        return await self.async_step_edit_contact(contact_uuid=contact_uuid)
+
+    async def async_step_edit_contact(self, user_input: dict[str, Any] | None = None, contact_uuid: str | None = None):
+        """Form to edit an existing contact."""
+        contacts = self._load_contacts()
+        contact = next((c for c in contacts if c["uuid"] == contact_uuid), None)
+        
+        if not contact:
+            return await self.async_step_init()
+        
+        if user_input is None:
+            return self.async_show_form(
+                step_id="edit_contact",
+                data_schema=vol.Schema({
+                    vol.Required("name", default=contact["name"]): str,
+                    vol.Required("number", default=contact["number"]): str,
+                }),
+            )
+        
+        # Update contact
+        contact["name"] = user_input["name"]
+        contact["number"] = user_input["number"]
+        
         return self.async_create_entry(
             title="",
-            data={
-                "whitelist_numbers": user_input.get("whitelist_numbers", ""),
-                "contacts": self._save_contacts(contacts),
-            },
+            data={"contacts": self._save_contacts(contacts)},
+        )
+
+    async def async_step_select_contact_to_delete(self, user_input: dict[str, Any] | None = None):
+        """Select a contact to delete."""
+        contacts = self._load_contacts()
+        
+        if user_input is None:
+            contact_options = {c["uuid"]: f"{c['name']} ({c['number']})" for c in contacts}
+            if not contact_options:
+                return await self.async_step_init()
+            
+            return self.async_show_form(
+                step_id="select_contact_to_delete",
+                data_schema=vol.Schema({
+                    vol.Required("contact_uuid"): vol.In(contact_options),
+                }),
+            )
+        
+        contact_uuid = user_input.get("contact_uuid")
+        contacts = [c for c in contacts if c["uuid"] != contact_uuid]
+        
+        return self.async_create_entry(
+            title="",
+            data={"contacts": self._save_contacts(contacts)},
         )

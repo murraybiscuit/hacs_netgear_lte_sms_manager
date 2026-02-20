@@ -1,12 +1,16 @@
-class NetgearSMSCard extends HTMLElement {
+// Register as frontend module for HACS
+if (!customElements.get("netgear-sms-card")) {
+  console.log("Registering netgear-sms-card");
+
+  class NetgearSMSCard extends HTMLElement {
     setConfig(config) {
-        this.config = config;
-        this.hass = null;
+      this.config = config;
+      this.hass = null;
     }
 
     set hass(hass) {
-        this._hass = hass;
-        this._render();
+      this._hass = hass;
+      this._render();
     }
 
     getCardSize() {
@@ -404,6 +408,7 @@ class NetgearSMSCard extends HTMLElement {
             this._render();
         }
     }
-}
+  }
 
-customElements.define("netgear-sms-card", NetgearSMSCard);
+  customElements.define("netgear-sms-card", NetgearSMSCard);
+}

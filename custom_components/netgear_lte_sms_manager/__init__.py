@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.typing import ConfigType
 
 from homeassistant import config_entries
+from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, LOGGER
 from .services import async_setup_services
@@ -22,6 +23,14 @@ from .services import async_setup_services
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Netgear LTE SMS Manager integration."""
     LOGGER.info("Setting up Netgear LTE SMS Manager")
+    
+    # Register frontend resources for Lovelace card
+    hass.http.register_static_path(
+        "/hacsfiles/netgear_lte_sms_manager/www",
+        hass.config.path("custom_components/netgear_lte_sms_manager/www"),
+        cache_headers=False,
+    )
+    
     async_setup_services(hass)
     return True
 
