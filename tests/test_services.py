@@ -66,9 +66,7 @@ class TestListInboxService:
                 NetgearLTECoreMissingError,
             )
 
-            mock_get_entry.side_effect = NetgearLTECoreMissingError(
-                "not configured"
-            )
+            mock_get_entry.side_effect = NetgearLTECoreMissingError("not configured")
 
             # Mock the exception class so pytest.raises can work with it
             with patch(
@@ -118,15 +116,15 @@ class TestDeleteSmsService:
                 mock_conn_inst.delete_sms_batch.assert_called_once_with([1, 2, 3])
 
 
-class TestDeleteOperatorSmsService:
-    """Tests for delete_operator_sms service."""
+class TestCleanupInboxService:
+    """Tests for cleanup_inbox service."""
 
     @pytest.mark.asyncio
-    async def test_delete_operator_sms_success(self, mock_hass: MagicMock) -> None:
-        """Test successful operator SMS deletion."""
+    async def test_cleanup_inbox_dry_run(self, mock_hass: MagicMock) -> None:
+        """Dry run should report proposed deletions but not delete."""
         from custom_components.netgear_lte_sms_manager.models import SMSMessage
         from custom_components.netgear_lte_sms_manager.services import (
-            _service_delete_operator_sms,
+            _service_cleanup_inbox,
         )
 
         entry = MagicMock()
@@ -136,7 +134,7 @@ class TestDeleteOperatorSmsService:
 
         call = MagicMock()
         call.hass = mock_hass
-        call.data = {}
+        call.data = {"dry_run": True, "retain_count": 1}
 
         with patch(
             "custom_components.netgear_lte_sms_manager.services.get_netgear_lte_entry"
@@ -148,15 +146,57 @@ class TestDeleteOperatorSmsService:
                 mock_conn_inst = AsyncMock()
                 mock_conn_inst.get_sms_list = AsyncMock(
                     return_value=[
-                        SMSMessage(1, "Orange", "Balance: $10"),
-                        SMSMessage(2, "Dad", "Hi"),
+                        SMSMessage(1, "Orange", "Balance: $10", "2025-02-17T09:30:00Z"),
+                        SMSMessage(2, "Dad", "Hi", "2025-02-17T10:00:00Z"),
+                        SMSMessage(3, "Spam", "Buy now", "2025-02-16T08:00:00Z"),
                     ]
                 )
-                mock_conn_inst.delete_sms_batch = AsyncMock(return_value=1)
+                mock_conn_inst.delete_sms_batch = AsyncMock(return_value=0)
                 mock_modem_conn.return_value = mock_conn_inst
 
-                await _service_delete_operator_sms(call)
+                await _service_cleanup_inbox(call)
 
-                # Should have found and deleted the Orange SMS
+                # Dry run should not call delete_sms_batch
+                mock_conn_inst.delete_sms_batch.assert_not_called()
+                mock_hass.bus.async_fire.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_inbox_delete(self, mock_hass: MagicMock) -> None:
+        """Actual cleanup should delete messages and respect whitelist."""
+        from custom_components.netgear_lte_sms_manager.models import SMSMessage
+        from custom_components.netgear_lte_sms_manager.services import (
+            _service_cleanup_inbox,
+        )
+
+        entry = MagicMock()
+        entry.data = {ATTR_HOST: "192.168.5.1"}
+        entry.runtime_data = MagicMock()
+        entry.runtime_data.modem = MagicMock()
+
+        call = MagicMock()
+        call.hass = mock_hass
+        call.data = {"dry_run": False, "retain_count": 1, "whitelist": ["Dad"]}
+
+        with patch(
+            "custom_components.netgear_lte_sms_manager.services.get_netgear_lte_entry"
+        ) as mock_get_entry:
+            with patch(
+                "custom_components.netgear_lte_sms_manager.services.ModemConnection"
+            ) as mock_modem_conn:
+                mock_get_entry.return_value = entry
+                mock_conn_inst = AsyncMock()
+                mock_conn_inst.get_sms_list = AsyncMock(
+                    return_value=[
+                        SMSMessage(1, "Orange", "Balance: $10", "2025-02-17T09:30:00Z"),
+                        SMSMessage(2, "Dad", "Hi", "2025-02-17T10:00:00Z"),
+                        SMSMessage(3, "Spam", "Buy now", "2025-02-16T08:00:00Z"),
+                    ]
+                )
+                mock_conn_inst.delete_sms_batch = AsyncMock(return_value=2)
+                mock_modem_conn.return_value = mock_conn_inst
+
+                await _service_cleanup_inbox(call)
+
+                # Should have called delete_sms_batch to remove non-whitelisted extras
                 mock_conn_inst.delete_sms_batch.assert_called_once()
-                mock_hass.bus.async_fire.assert_called_once()
+                mock_hass.bus.async_fire.assert_called()

@@ -11,34 +11,25 @@ LOGGER = logging.getLogger(__package__)
 # Service names
 SERVICE_LIST_INBOX: Final = "list_inbox"
 SERVICE_DELETE_SMS: Final = "delete_sms"
-SERVICE_DELETE_OPERATOR_SMS: Final = "delete_operator_sms"
+SERVICE_CLEANUP_INBOX: Final = "cleanup_inbox"
 SERVICE_GET_INBOX_JSON: Final = "get_inbox_json"
 
 # Event names
 EVENT_SMS_INBOX_LISTED: Final = "netgear_lte_sms_manager_inbox_listed"
-EVENT_DELETE_OPERATOR_SMS_COMPLETE: Final = "netgear_lte_sms_manager_delete_operator_sms_complete"
+EVENT_CLEANUP_COMPLETE: Final = "netgear_lte_sms_manager_cleanup_complete"
 
 # Attributes
 ATTR_HOST: Final = "host"
 ATTR_SMS_ID: Final = "sms_id"
 ATTR_MESSAGES: Final = "messages"
-ATTR_OPERATORS: Final = "operators"
+ATTR_WHITELIST: Final = "whitelist"
+ATTR_RETAIN_COUNT: Final = "retain_count"
+ATTR_RETAIN_DAYS: Final = "retain_days"
+ATTR_DRY_RUN: Final = "dry_run"
 ATTR_COUNT_DELETED: Final = "count_deleted"
 ATTR_TIMESTAMP: Final = "timestamp"
 
-# Default operator patterns to filter (common network operators)
-DEFAULT_OPERATOR_PATTERNS: Final = [
-    "Orange",
-    "Vodafone",
-    "T-Mobile",
-    "AT&T",
-    "Verizon",
-    "Sprint",
-    "Rogers",
-    "Bell",
-    "Telus",
-    "Telstra",
-    "Optus",
-    "ntn",
-    "o2",
-]
+# Defaults for cleanup behaviour
+DEFAULT_RETAIN_COUNT: Final = 24
+DEFAULT_RETAIN_DAYS: Final = 0  # 0 means ignore age
+DEFAULT_DRY_RUN: Final = True

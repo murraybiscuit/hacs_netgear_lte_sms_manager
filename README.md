@@ -10,6 +10,7 @@ A Home Assistant custom component that extends the core `netgear_lte` integratio
 - **List SMS Inbox** - View all messages in the modem inbox
 - **Delete SMS** - Delete specific messages by ID or in bulk
 - **Auto-cleanup Operator SMS** - Automatically remove network operator notifications and balance updates
+ - **Policy-based Inbox Cleanup** - Remove old or unwanted messages using retain count, age, and whitelist
 - **Verbose Error Handling** - Clear feedback for API compatibility issues and modem communication problems
 - **Event-based Integration** - Fires events for automations and template sensors
 - **Multi-modem Support** - Manage multiple Netgear LTE modems
@@ -36,7 +37,59 @@ The core `netgear_lte` component provides SMS event triggers, but the modem SIM 
 
 ## Configuration
 
-No configuration needed! The component auto-detects your`netgear_lte` modem configuration from the core integration.
+The component auto-detects your `netgear_lte` modem configuration from the core integration. After installation, go to **Settings → Integrations → Netgear LTE SMS Manager** to configure:
+
+### SMS Contacts
+
+Add trusted phone contacts that will be whitelisted during cleanup. Contacts are stored securely in Home Assistant (never in your git repo):
+
+1. Go to integration Options
+2. Select "Manage Contacts"
+3. Add each contact with name and phone number
+4. Contacts are auto-assigned UUIDs for future personalization
+
+Use cases for contacts:
+- Whitelist family members to protect their messages from cleanup
+- Reference contact names in automation conditions (e.g., "trigger if SMS from Dad")
+- Enable welcome SMS feature when new contact is added (future enhancement: "reply with HELP for menu")
+
+### Direct Phone Numbers (Power Users)
+
+For ad-hoc whitelisting without creating a contact, go to the "Whitelist Numbers" option and add phone numbers (one per line).
+
+### Default Cleanup Policy
+
+Future: Configure default `retain_count`, `retain_days`, and whether `dry_run` is on by default.
+
+## User Interface (Lovelace Card)
+
+A custom Lovelace card is included for visual SMS inbox management:
+
+### Installation
+
+1. In Home Assistant, register the custom card. Add this to `configuration.yaml`:
+```yaml
+lovelace:
+  resources:
+    - url: /local/community/netgear_lte_sms_manager/www/netgear-sms-card.js
+      type: module
+```
+
+2. Add the card to a dashboard:
+```yaml
+type: custom:netgear-sms-card
+host: 192.168.5.1  # (Optional) IP of modem
+```
+
+### Features
+
+- **Inbox Display**: View all messages with sender, content, and timestamp
+- **Quick Delete**: Delete individual messages
+- **Cleanup Controls**: Set retain_count, retain_days, and toggle dry_run mode
+- **Preview & Execute**: Test cleanup policy before running
+- **Real-time Status**: Shows loading/success/error messages
+
+See [Card Installation Guide](custom_components/netgear_lte_sms_manager/www/CARD_INSTALLATION.md) for detailed instructions.
 
 ## Usage
 
@@ -78,18 +131,38 @@ data:
   sms_id: [1, 2, 3]  # ID or list of IDs
 ```
 
-### Service: `delete_operator_sms`
+### Service: `cleanup_inbox`
 
-Automatically remove SMS from known network operators.
+Clean up the modem SMS inbox using policy options. Useful to reclaim space
+from recurring operator messages while preserving messages you care about.
 
 ```yaml
-service: netgear_lte_sms_manager.delete_operator_sms
+service: netgear_lte_sms_manager.cleanup_inbox
 data:
   host: "192.168.5.1"
-  operators: ["Orange", "Vodafone", "T-Mobile"]  # Optional, uses defaults if omitted
+  retain_count: 24    # Keep newest 24 messages
+  retain_days: 0      # Ignore age-based retention
+  whitelist: []       # Senders to never delete
+  dry_run: true       # If true, reports what would be deleted only
 ```
 
-**Event fired:** `netgear_lte_sms_manager_delete_operator_sms_complete`
+**Event fired:** `netgear_lte_sms_manager_cleanup_complete`
+
+**Whitelist in cleanup:**
+The `cleanup_inbox` service respects saved contacts and direct phone numbers. In the `whitelist` parameter, you can specify:
+- Contact names (e.g., "Dad", "Mom") - exact match on SMS sender
+- Phone numbers (e.g., "+1234567890")
+- The service will preserve any messages from whitelisted senders
+
+Example:
+```yaml
+service: netgear_lte_sms_manager.cleanup_inbox
+data:
+  host: "192.168.5.1"
+  retain_count: 48
+  whitelist: ["Dad", "+1234567890"]  # Keep messages from these senders
+  dry_run: false
+```
 
 ### Service: `get_inbox_json`
 
@@ -103,19 +176,31 @@ data:
 
 ## Automation Examples
 
-### Clean up operator SMS daily
+### Scheduled inbox cleanup
 
 ```yaml
 automation:
-  - alias: "Clean up operator messages daily"
+  - alias: "Cleanup SMS inbox daily"
     trigger:
       platform: time
       at: "02:00:00"
     action:
-      service: netgear_lte_sms_manager.delete_operator_sms
+      service: netgear_lte_sms_manager.cleanup_inbox
       data:
         host: "192.168.5.1"
+        retain_count: 24
+        dry_run: false
 ```
+
+### Using Contacts in Automations
+
+Currently, you provide contact names/numbers as free text in the `whitelist` parameter. In future releases, we plan to:
+
+1. **Expose contact IDs as helper entities** - each contact gets its own entity so automations can reference them declaratively
+2. **Add SMS validation** - automations can require an SMS to be from a selected contact (validation enforced at runtime)
+3. **Welcome message automation** - trigger a welcome SMS when a new contact is added
+
+For now, use contact names/numbers directly in automation whitelist parameters.
 
 ### List inbox on demand
 
@@ -215,9 +300,13 @@ mypy custom_components
 
 ## Roadmap
 
-- [ ] Lovelace card UI for inbox management
+- [x] Lovelace card UI for inbox management
+- [x] Persistent contact list with config flow UI
+- [x] Policy-based inbox cleanup (retain count, age, whitelist)
 - [ ] SMS automation trigger (keyword matching)
-- [ ] Scheduled auto-cleanup of operator SMS
+- [ ] Helper entities for contacts (for automation automation reference)
+- [ ] SMS-triggered automation validation (require contact selection)
+- [ ] Welcome SMS on new contact added
 - [ ] SMS statistics and analytics
 - [ ] Send SMS via automation actions
 - [ ] SMS filtering and rules engine

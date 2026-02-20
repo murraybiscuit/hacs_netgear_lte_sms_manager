@@ -28,21 +28,36 @@
       "name": "Delete SMS",
       "required": ["sms_id"]
     },
-    "delete_operator_sms": {
-      "description": "Delete SMS from known network operators (balance notifications, etc).",
+    "cleanup_inbox": {
+      "description": "Clean up the SMS inbox using policy options.",
       "fields": {
         "host": {
           "description": "IP address of the Netgear LTE modem (auto-detected if only one configured).",
           "example": "192.168.5.1",
           "name": "Modem Host"
         },
-        "operators": {
-          "description": "List of operator name patterns to filter. If not provided, uses default list.",
-          "example": ["Orange", "Vodafone", "T-Mobile"],
-          "name": "Operator Patterns"
+        "retain_count": {
+          "description": "Number of newest messages to keep (default 24).",
+          "example": 24,
+          "name": "Retain count"
+        },
+        "retain_days": {
+          "description": "Keep messages newer than this many days (0 = ignore).",
+          "example": 7,
+          "name": "Retain days"
+        },
+        "whitelist": {
+          "description": "List of senders (numbers or names) that should never be deleted.",
+          "example": ["+123456789", "Mom"],
+          "name": "Whitelist"
+        },
+        "dry_run": {
+          "description": "If true, only report what would be deleted without deleting.",
+          "example": true,
+          "name": "Dry run"
         }
       },
-      "name": "Delete Operator SMS"
+      "name": "Cleanup Inbox"
     },
     "get_inbox_json": {
       "description": "Get inbox as JSON data (for template sensors and integrations).",

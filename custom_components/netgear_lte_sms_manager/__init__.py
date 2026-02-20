@@ -7,8 +7,11 @@ SMS messages from the modem.
 
 from __future__ import annotations
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.typing import ConfigType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, LOGGER
 from .services import async_setup_services

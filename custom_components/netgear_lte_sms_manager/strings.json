@@ -24,19 +24,31 @@
       },
       "name": "[%key:component::netgear_lte_sms_manager::services::delete_sms::name%]"
     },
-    "delete_operator_sms": {
-      "description": "[%key:component::netgear_lte_sms_manager::services::delete_operator_sms::description%]",
+    "cleanup_inbox": {
+      "description": "Clean up the modem SMS inbox using policy options (retain count, age, whitelist).",
       "fields": {
         "host": {
-          "description": "[%key:component::netgear_lte_sms_manager::services::delete_operator_sms::fields::host::description%]",
-          "name": "[%key:component::netgear_lte_sms_manager::services::delete_operator_sms::fields::host::name%]"
+          "description": "The modem to clean up (auto-detected if only one configured).",
+          "name": "Modem Host"
         },
-        "operators": {
-          "description": "[%key:component::netgear_lte_sms_manager::services::delete_operator_sms::fields::operators::description%]",
-          "name": "[%key:component::netgear_lte_sms_manager::services::delete_operator_sms::fields::operators::name%]"
+        "retain_count": {
+          "description": "Number of newest messages to keep (default 24).",
+          "name": "Retain count"
+        },
+        "retain_days": {
+          "description": "Keep messages newer than this many days (0 = ignore).",
+          "name": "Retain days"
+        },
+        "whitelist": {
+          "description": "List of senders (numbers or names) that should never be deleted.",
+          "name": "Whitelist"
+        },
+        "dry_run": {
+          "description": "If true, only report what would be deleted without deleting.",
+          "name": "Dry run"
         }
       },
-      "name": "[%key:component::netgear_lte_sms_manager::services::delete_operator_sms::name%]"
+      "name": "Cleanup Inbox"
     },
     "get_inbox_json": {
       "description": "[%key:component::netgear_lte_sms_manager::services::get_inbox_json::description%]",

@@ -2,37 +2,47 @@
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant, ServiceCall, callback
+    from homeassistant.exceptions import ServiceValidationError
+    from homeassistant.helpers import config_validation as cv
+
+# Runtime imports required for schema validation and exception handling
+from homeassistant.core import callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
     ATTR_COUNT_DELETED,
+    ATTR_DRY_RUN,
     ATTR_HOST,
     ATTR_MESSAGES,
-    ATTR_OPERATORS,
+    ATTR_RETAIN_COUNT,
+    ATTR_RETAIN_DAYS,
     ATTR_SMS_ID,
-    ATTR_TIMESTAMP,
-    DEFAULT_OPERATOR_PATTERNS,
+    ATTR_WHITELIST,
+    DEFAULT_DRY_RUN,
+    DEFAULT_RETAIN_COUNT,
+    DEFAULT_RETAIN_DAYS,
     DOMAIN,
-    EVENT_DELETE_OPERATOR_SMS_COMPLETE,
+    EVENT_CLEANUP_COMPLETE,
     EVENT_SMS_INBOX_LISTED,
     LOGGER,
-    SERVICE_DELETE_OPERATOR_SMS,
+    SERVICE_CLEANUP_INBOX,
     SERVICE_DELETE_SMS,
     SERVICE_GET_INBOX_JSON,
     SERVICE_LIST_INBOX,
 )
-from .helpers import get_all_netgear_modems, get_netgear_lte_entry
+from .helpers import get_netgear_lte_entry, get_saved_options, parse_whitelist_options
 from .models import (
-    DependencyError,
     EternalEgyptVersionError,
-    ModemConnection,
     ModemCommunicationError,
+    ModemConnection,
     NetgearLTECoreMissingError,
 )
 
@@ -46,10 +56,15 @@ DELETE_SMS_SCHEMA = vol.Schema(
     }
 )
 
-DELETE_OPERATOR_SMS_SCHEMA = vol.Schema(
+# Operator-specific deletion removed in favor of the policy-based cleanup_inbox
+
+CLEANUP_INBOX_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_HOST): cv.string,
-        vol.Optional(ATTR_OPERATORS): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_RETAIN_COUNT): vol.Any(None, cv.positive_int),
+        vol.Optional(ATTR_RETAIN_DAYS): vol.Any(None, cv.positive_int),
+        vol.Optional(ATTR_WHITELIST): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_DRY_RUN): cv.boolean,
     }
 )
 
@@ -78,9 +93,7 @@ async def _service_list_inbox(call: ServiceCall) -> None:
             ATTR_MESSAGES: [msg.to_dict() for msg in sms_list],
         }
 
-        LOGGER.info(
-            "Found %d SMS messages in inbox, firing event", len(sms_list)
-        )
+        LOGGER.info("Found %d SMS messages in inbox, firing event", len(sms_list))
         hass.bus.async_fire(EVENT_SMS_INBOX_LISTED, event_data)
 
     except NetgearLTECoreMissingError as ex:
@@ -147,61 +160,158 @@ async def _service_delete_sms(call: ServiceCall) -> None:
         ) from ex
 
 
-async def _service_delete_operator_sms(call: ServiceCall) -> None:
-    """Delete SMS from known operators (auto-cleanup).
+async def _service_cleanup_inbox(call: ServiceCall) -> None:
+    """Clean up the inbox according to provided policy.
 
-    This service automatically deletes SMS messages from common
-    network operators (e.g., balance notifications, network updates).
+    Options:
+      - retain_count: keep newest N messages (default 24)
+      - retain_days: keep messages newer than N days (0 = ignore)
+      - whitelist: list of sender strings to never delete
+      - dry_run: if True, do not delete, only report proposed deletions
     """
     hass = call.hass
     host = call.data.get(ATTR_HOST)
-    operators = call.data.get(ATTR_OPERATORS, DEFAULT_OPERATOR_PATTERNS)
+    retain_count = call.data.get(ATTR_RETAIN_COUNT, DEFAULT_RETAIN_COUNT)
+    retain_days = call.data.get(ATTR_RETAIN_DAYS, DEFAULT_RETAIN_DAYS)
+    # Start with options-defined whitelist (direct numbers + contacts)
+    options = get_saved_options(hass)
+    parsed = parse_whitelist_options(options)
+    saved_numbers = parsed.get("phone_numbers", set())
+    contacts = parsed.get("contacts", {})
+
+    # Compose initial whitelist (numbers and contact names)
+    whitelist = set(saved_numbers)
+    # Add contact numbers and names
+    for c in contacts.values():
+        if c.get("number"):
+            whitelist.add(c["number"])
+        if c.get("name"):
+            whitelist.add(c["name"])
+
+    # Merge any service-call provided whitelist (overrides/extends)
+    call_whitelist = call.data.get(ATTR_WHITELIST, []) or []
+    for w in call_whitelist:
+        whitelist.add(w)
+    dry_run = call.data.get(ATTR_DRY_RUN, DEFAULT_DRY_RUN)
 
     try:
         entry = get_netgear_lte_entry(hass, host)
         modem = ModemConnection(entry.runtime_data.modem)
 
-        LOGGER.info(
-            "Fetching SMS inbox to filter operator messages from %s",
-            entry.data.get("host"),
-        )
+        LOGGER.info("Fetching SMS inbox for cleanup from %s", entry.data.get("host"))
         sms_list = await modem.get_sms_list()
 
-        # Find SMS from operators
-        sms_to_delete = []
+        # Normalize timestamps and sort newest -> oldest
+        def parse_ts(ts: str | None) -> datetime | None:
+            if not ts:
+                return None
+            for fmt in (
+                "%Y-%m-%dT%H:%M:%SZ",
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S",
+            ):
+                try:
+                    return datetime.strptime(ts, fmt)
+                except Exception:
+                    continue
+            try:
+                return datetime.fromisoformat(ts)
+            except Exception:
+                return None
+
+        annotated = []
         for sms in sms_list:
-            for operator in operators:
-                if operator.lower() in sms.sender.lower():
-                    sms_to_delete.append(sms.id)
-                    LOGGER.debug(
-                        "Marking SMS %d from %s for deletion",
-                        sms.id,
-                        sms.sender,
-                    )
-                    break
+            ts = parse_ts(getattr(sms, "timestamp", None))
+            annotated.append((sms, ts))
 
-        if not sms_to_delete:
-            LOGGER.info(
-                "No operator SMS found matching patterns: %s",
-                operators,
+        # Sort by timestamp desc; if missing timestamp, keep original order (assume modem returns newest first)
+        annotated.sort(key=lambda x: (x[1] is not None, x[1]), reverse=True)
+
+        # Determine messages to keep (by retain_count)
+        keep_ids: set[int] = set()
+        kept = 0
+        for sms, ts in annotated:
+            if sms.sender in whitelist:
+                # Always keep whitelisted
+                keep_ids.add(sms.id)
+                continue
+            if retain_count and kept < retain_count:
+                keep_ids.add(sms.id)
+                kept += 1
+
+        # Determine by retain_days
+        delete_candidates: list[int] = []
+        if retain_days and retain_days > 0:
+            cutoff = datetime.utcnow() - timedelta(days=retain_days)
+            for sms, ts in annotated:
+                if ts is None:
+                    continue
+                if (
+                    ts < cutoff
+                    and sms.id not in keep_ids
+                    and sms.sender not in whitelist
+                ):
+                    delete_candidates.append(sms.id)
+
+        # Also add any non-kept messages beyond retain_count
+        for sms, ts in reversed(annotated):
+            # reversed iterates oldest first; delete if not kept and not whitelisted
+            if sms.id in keep_ids or sms.sender in whitelist:
+                continue
+            if sms.id not in delete_candidates and sms.id not in keep_ids:
+                delete_candidates.append(sms.id)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        final_delete = []
+        for sid in delete_candidates:
+            if sid in seen:
+                continue
+            seen.add(sid)
+            final_delete.append(sid)
+
+        if not final_delete:
+            LOGGER.info("No messages to delete after applying cleanup policy")
+            hass.bus.async_fire(
+                EVENT_CLEANUP_COMPLETE,
+                {
+                    ATTR_HOST: entry.data.get("host"),
+                    ATTR_COUNT_DELETED: 0,
+                    ATTR_WHITELIST: whitelist,
+                    ATTR_DRY_RUN: dry_run,
+                },
             )
-            deleted_count = 0
-        else:
-            LOGGER.info(
-                "Deleting %d operator SMS from %s",
-                len(sms_to_delete),
-                entry.data.get("host"),
+            return
+
+        if dry_run:
+            # Report proposed deletions
+            LOGGER.info("Dry run cleanup, would delete %d messages", len(final_delete))
+            hass.bus.async_fire(
+                EVENT_CLEANUP_COMPLETE,
+                {
+                    ATTR_HOST: entry.data.get("host"),
+                    ATTR_COUNT_DELETED: len(final_delete),
+                    ATTR_MESSAGES: final_delete,
+                    ATTR_WHITELIST: whitelist,
+                    ATTR_DRY_RUN: True,
+                },
             )
-            deleted_count = await modem.delete_sms_batch(sms_to_delete)
+            return
 
-        event_data = {
-            ATTR_HOST: entry.data.get("host"),
-            ATTR_COUNT_DELETED: deleted_count,
-            ATTR_OPERATORS: operators,
-        }
-        hass.bus.async_fire(EVENT_DELETE_OPERATOR_SMS_COMPLETE, event_data)
+        # Perform deletion
+        deleted_count = await modem.delete_sms_batch(final_delete)
+        hass.bus.async_fire(
+            EVENT_CLEANUP_COMPLETE,
+            {
+                ATTR_HOST: entry.data.get("host"),
+                ATTR_COUNT_DELETED: deleted_count,
+                ATTR_MESSAGES: final_delete,
+                ATTR_WHITELIST: whitelist,
+                ATTR_DRY_RUN: False,
+            },
+        )
 
-        LOGGER.info("Deleted %d operator SMS", deleted_count)
+        LOGGER.info("Cleanup deleted %d messages", deleted_count)
 
     except NetgearLTECoreMissingError as ex:
         LOGGER.error("Configuration error: %s", ex)
@@ -213,17 +323,20 @@ async def _service_delete_operator_sms(call: ServiceCall) -> None:
             translation_domain=DOMAIN,
         ) from ex
     except ModemCommunicationError as ex:
-        LOGGER.warning("Failed to delete operator SMS: %s", ex)
+        LOGGER.warning("Failed to cleanup inbox: %s", ex)
         raise ServiceValidationError(
-            f"Deletion error: {ex}",
+            f"Cleanup error: {ex}",
             translation_domain=DOMAIN,
         ) from ex
     except Exception as ex:
-        LOGGER.exception("Unexpected error in delete_operator_sms service")
+        LOGGER.exception("Unexpected error in cleanup_inbox service")
         raise ServiceValidationError(
             f"Unexpected error: {type(ex).__name__}",
             translation_domain=DOMAIN,
         ) from ex
+
+
+# The operator-specific deletion service was removed; use cleanup_inbox instead.
 
 
 async def _service_get_inbox_json(call: ServiceCall) -> dict[str, Any]:
@@ -276,10 +389,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
     service_handlers = {
         SERVICE_LIST_INBOX: (_service_list_inbox, LIST_INBOX_SCHEMA),
         SERVICE_DELETE_SMS: (_service_delete_sms, DELETE_SMS_SCHEMA),
-        SERVICE_DELETE_OPERATOR_SMS: (
-            _service_delete_operator_sms,
-            DELETE_OPERATOR_SMS_SCHEMA,
-        ),
+        SERVICE_CLEANUP_INBOX: (_service_cleanup_inbox, CLEANUP_INBOX_SCHEMA),
         SERVICE_GET_INBOX_JSON: (_service_get_inbox_json, GET_INBOX_JSON_SCHEMA),
     }
 
