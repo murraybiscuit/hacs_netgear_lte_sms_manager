@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.typing import ConfigType
 
+from homeassistant import config_entries
+
 from .const import DOMAIN, LOGGER
 from .services import async_setup_services
 
@@ -21,4 +23,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Netgear LTE SMS Manager integration."""
     LOGGER.info("Setting up Netgear LTE SMS Manager")
     async_setup_services(hass)
+    return True
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: config_entries.ConfigEntry
+) -> bool:
+    """Set up config entry (no async setup needed for services-only component)."""
+    LOGGER.debug("Setting up config entry for %s", entry.title)
+    return True
+
+
+async def async_unload_entry(
+    hass: HomeAssistant, entry: config_entries.ConfigEntry
+) -> bool:
+    """Unload config entry."""
+    LOGGER.debug("Unloading config entry for %s", entry.title)
     return True
