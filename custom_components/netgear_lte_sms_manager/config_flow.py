@@ -8,7 +8,6 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import callback
 
 from .const import DOMAIN
 
@@ -25,6 +24,11 @@ class NetgearLTESMSConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Create config entry with no special data; options editable via OptionsFlow
         return self.async_create_entry(title="Netgear LTE SMS Manager", data={})
+
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+        """Get options flow handler."""
+        return OptionsFlowHandler(config_entry)
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
@@ -157,8 +161,3 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 "contacts": self._save_contacts(),
             },
         )
-
-
-@callback
-def async_get_options_flow(config_entry: config_entries.ConfigEntry):
-    return OptionsFlowHandler(config_entry)

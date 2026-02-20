@@ -9,7 +9,7 @@
   "integration_type": "helper",
   "iot_class": "local_polling",
   "requirements": [],
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "homeassistant": "2025.1.0",
   "issue_tracker": "https://github.com/murraybiscuit/hass_netgear_lte_sms_manager/issues",
   "dependencies": [
