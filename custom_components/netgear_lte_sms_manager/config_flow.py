@@ -65,33 +65,34 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         return json.dumps(contacts, indent=2)
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
-        """Initial step: display contact list UI."""
+        """Initial step: display contact list with action menu."""
+        contacts = self._load_contacts()
+        
         if user_input is None:
-            # Load contacts for display
-            contacts = self._load_contacts()
-            contact_list_display = "\n".join(
-                [f"{c['name']} ({c['number']})" for c in contacts]
-            ) if contacts else "(no contacts yet)"
+            # Build contact list display
+            contact_lines = []
+            if contacts:
+                for contact in contacts:
+                    contact_lines.append(f"  • {contact['name']} ({contact['number']})")
+            else:
+                contact_lines.append("  (no contacts yet)")
             
-            return self.async_show_form(
+            contact_list_display = "\n".join(contact_lines)
+            
+            # Show menu with actions
+            menu_options = ["add_contact"]
+            if contacts:
+                menu_options.extend(["edit_contact", "delete_contact"])
+            
+            return self.async_show_menu(
                 step_id="init",
-                data_schema=vol.Schema({
-                    vol.Optional("action"): vol.In(["add_contact", "edit_contact", "delete_contact"]),
-                }),
+                menu_options=menu_options,
                 description_placeholders={
-                    "current_contacts": contact_list_display
+                    "contact_list": contact_list_display,
                 },
             )
         
-        action = user_input.get("action")
-        if action == "add_contact":
-            return await self.async_step_add_contact()
-        elif action == "edit_contact":
-            return await self.async_step_select_contact_to_edit()
-        elif action == "delete_contact":
-            return await self.async_step_select_contact_to_delete()
-        
-        # Return to init if no action
+        # This shouldn't be reached with async_show_menu
         return await self.async_step_init()
 
     async def async_step_add_contact(self, user_input: dict[str, Any] | None = None):
@@ -99,12 +100,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is None:
             return self.async_show_form(
                 step_id="add_contact",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required("name"): str,
-                        vol.Required("number"): str,
-                    }
-                ),
+                data_schema=vol.Schema({
+                    vol.Required("name"): str,
+                    vol.Required("number"): str,
+                }),
             )
 
         # Load existing contacts
@@ -118,42 +117,54 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         }
         contacts.append(new_contact)
 
-        # Save updated contacts via options
+        # Save and return to init
         return self.async_create_entry(
             title="",
             data={"contacts": self._save_contacts(contacts)},
         )
 
-    async def async_step_select_contact_to_edit(self, user_input: dict[str, Any] | None = None):
-        """Select a contact to edit."""
+    async def async_step_edit_contact(self, user_input: dict[str, Any] | None = None):
+        """Select and edit a contact."""
         contacts = self._load_contacts()
         
         if user_input is None:
+            # Show dropdown to select contact to edit
             contact_options = {c["uuid"]: f"{c['name']} ({c['number']})" for c in contacts}
             if not contact_options:
                 return await self.async_step_init()
             
             return self.async_show_form(
-                step_id="select_contact_to_edit",
+                step_id="edit_contact",
                 data_schema=vol.Schema({
                     vol.Required("contact_uuid"): vol.In(contact_options),
                 }),
             )
         
+        # Get selected contact
         contact_uuid = user_input.get("contact_uuid")
-        return await self.async_step_edit_contact(contact_uuid=contact_uuid)
-
-    async def async_step_edit_contact(self, user_input: dict[str, Any] | None = None, contact_uuid: str | None = None):
-        """Form to edit an existing contact."""
-        contacts = self._load_contacts()
         contact = next((c for c in contacts if c["uuid"] == contact_uuid), None)
+        
+        if not contact:
+            return await self.async_step_init()
+        
+        # Store UUID for next step
+        self._editing_contact_uuid = contact_uuid
+        return await self.async_step_edit_contact_form()
+
+    async def async_step_edit_contact_form(self, user_input: dict[str, Any] | None = None):
+        """Form to edit the selected contact."""
+        contacts = self._load_contacts()
+        contact = next(
+            (c for c in contacts if c["uuid"] == getattr(self, "_editing_contact_uuid", None)),
+            None,
+        )
         
         if not contact:
             return await self.async_step_init()
         
         if user_input is None:
             return self.async_show_form(
-                step_id="edit_contact",
+                step_id="edit_contact_form",
                 data_schema=vol.Schema({
                     vol.Required("name", default=contact["name"]): str,
                     vol.Required("number", default=contact["number"]): str,
@@ -169,22 +180,24 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             data={"contacts": self._save_contacts(contacts)},
         )
 
-    async def async_step_select_contact_to_delete(self, user_input: dict[str, Any] | None = None):
-        """Select a contact to delete."""
+    async def async_step_delete_contact(self, user_input: dict[str, Any] | None = None):
+        """Select and delete a contact."""
         contacts = self._load_contacts()
         
         if user_input is None:
+            # Show dropdown to select contact to delete
             contact_options = {c["uuid"]: f"{c['name']} ({c['number']})" for c in contacts}
             if not contact_options:
                 return await self.async_step_init()
             
             return self.async_show_form(
-                step_id="select_contact_to_delete",
+                step_id="delete_contact",
                 data_schema=vol.Schema({
                     vol.Required("contact_uuid"): vol.In(contact_options),
                 }),
             )
         
+        # Delete selected contact
         contact_uuid = user_input.get("contact_uuid")
         contacts = [c for c in contacts if c["uuid"] != contact_uuid]
         
