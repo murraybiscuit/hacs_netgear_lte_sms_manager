@@ -112,13 +112,15 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
             if normalize_number(msg.sender) not in trusted_numbers:
                 continue
 
+            sender_digits = normalize_number(msg.sender)
+
             if is_help_message(msg.message):
                 reply = build_help_reply(commands)
                 try:
-                    await modem.send_sms(msg.sender, reply)
-                    LOGGER.info("Sent HELP reply to %s", msg.sender)
+                    await modem.send_sms(sender_digits, reply)
+                    LOGGER.info("Sent HELP reply to %s", sender_digits)
                 except Exception as ex:
-                    LOGGER.warning("HELP reply to %s failed: %s", msg.sender, ex)
+                    LOGGER.warning("HELP reply to %s failed: %s", sender_digits, ex)
                 continue
 
             command = keyword_match(msg.message, commands)
@@ -131,10 +133,10 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
             success = True
             try:
                 await self.hass.services.async_call(domain, service, service_data, blocking=False)
-                LOGGER.info("Command '%s' executed for %s", command["name"], msg.sender)
+                LOGGER.info("Command '%s' executed for %s", command["name"], sender_digits)
                 reply = command.get("reply_ok", "")
             except Exception as ex:
-                LOGGER.warning("Command '%s' failed for %s: %s", command["name"], msg.sender, ex)
+                LOGGER.warning("Command '%s' failed for %s: %s", command["name"], sender_digits, ex)
                 success = False
                 reply = command.get("reply_fail", "")
 
@@ -142,7 +144,7 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
                 EVENT_COMMAND_EXECUTED,
                 {
                     "command": command["name"],
-                    "sender": msg.sender,
+                    "sender": sender_digits,
                     "message": msg.message,
                     "success": success,
                 },
@@ -150,9 +152,9 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
 
             if reply:
                 try:
-                    await modem.send_sms(msg.sender, reply)
+                    await modem.send_sms(sender_digits, reply)
                 except Exception as ex:
-                    LOGGER.warning("Reply to %s failed: %s", msg.sender, ex)
+                    LOGGER.warning("Reply to %s failed: %s", sender_digits, ex)
 
     async def _auto_opt_out(
         self, modem: ModemConnection, new_messages: list[SMSMessage]
@@ -172,17 +174,18 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
             if not is_opt_out_message(msg.message):
                 continue
             try:
-                await modem.send_sms(msg.sender, "STOP")
+                sender_digits = normalize_number(msg.sender)
+                await modem.send_sms(sender_digits, "STOP")
                 await modem.delete_sms(msg.id)
                 opted_out.add(msg.id)
                 LOGGER.info(
                     "Auto opted out: sent STOP to %s, deleted message %d",
-                    msg.sender,
+                    sender_digits,
                     msg.id,
                 )
                 self.hass.bus.async_fire(
                     EVENT_AUTO_OPT_OUT,
-                    {"sender": msg.sender, "sms_id": msg.id, "message": msg.message},
+                    {"sender": sender_digits, "sms_id": msg.id, "message": msg.message},
                 )
             except Exception as ex:
                 LOGGER.warning(
