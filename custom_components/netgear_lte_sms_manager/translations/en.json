@@ -135,6 +135,16 @@
       "fields": {
         "command_id": { "name": "Command ID", "description": "UUID of the command to remove." }
       }
+    },
+    "test_command": {
+      "name": "Test Command",
+      "description": "Test command dispatch with a synthetic message. Bypasses the new-message check — useful for verifying commands without waiting for a real SMS.",
+      "fields": {
+        "message": { "name": "Message", "description": "SMS text to match against commands (e.g. 'lock')." },
+        "sender": { "name": "Sender", "description": "Phone number — must be a trusted contact." },
+        "host": { "name": "Modem Host", "description": "IP address of the modem (auto-detected if only one configured)." },
+        "send_reply": { "name": "Send reply", "description": "Send the reply SMS back to the sender (default true)." }
+      }
     }
   }
 }

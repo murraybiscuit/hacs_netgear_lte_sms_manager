@@ -39,6 +39,7 @@ from .const import (
     EVENT_SMS_SENT,
     SERVICE_ADD_COMMAND,
     SERVICE_REMOVE_COMMAND,
+    SERVICE_TEST_COMMAND,
     SERVICE_UPDATE_COMMAND,
     LOGGER,
     SERVICE_ADD_CONTACT,
@@ -53,6 +54,7 @@ from .const import (
 from .helpers import (
     get_netgear_lte_entry,
     get_saved_options,
+    keyword_match,
     load_commands,
     load_contacts,
     normalize_number,
@@ -516,6 +518,67 @@ async def _service_remove_command(call: ServiceCall) -> None:
     LOGGER.info("Removed command %s", command_id)
 
 
+TEST_COMMAND_SCHEMA = vol.Schema(
+    {
+        vol.Required("message"): cv.string,
+        vol.Required("sender"): cv.string,
+        vol.Optional(ATTR_HOST): cv.string,
+        vol.Optional("send_reply", default=True): cv.boolean,
+    }
+)
+
+
+async def _service_test_command(call: ServiceCall) -> None:
+    """Test command dispatch with a synthetic message — bypasses the new-message check."""
+    hass = call.hass
+    message_text: str = call.data["message"]
+    sender: str = call.data["sender"]
+    host = call.data.get(ATTR_HOST)
+    send_reply: bool = call.data.get("send_reply", True)
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        raise ServiceValidationError("Netgear LTE SMS Manager is not configured.")
+    sms_entry = entries[0]
+
+    contacts = load_contacts(sms_entry.options)
+    trusted = {normalize_number(c["number"]) for c in contacts}
+    if normalize_number(sender) not in trusted:
+        raise ServiceValidationError(
+            f"{sender} is not a trusted contact. Add them first via add_contact."
+        )
+
+    commands = load_commands(sms_entry.options)
+    command = keyword_match(message_text, commands)
+    if command is None:
+        raise ServiceValidationError(
+            f"No command matched '{message_text}'. "
+            f"Configured keywords: {[kw for c in commands for kw in c.get('keywords', [])]}"
+        )
+
+    domain, service = command["service"].split(".", 1)
+    service_data = {"entity_id": command["entity_id"], **command.get("service_data", {})}
+
+    try:
+        await hass.services.async_call(domain, service, service_data, blocking=True)
+        LOGGER.info("test_command: executed '%s' for %s", command["name"], sender)
+        reply = command.get("reply_ok", "")
+    except Exception as ex:
+        LOGGER.warning("test_command: '%s' failed: %s", command["name"], ex)
+        raise ServiceValidationError(
+            f"Command '{command['name']}' matched but service call failed: {ex}"
+        ) from ex
+
+    if send_reply and reply:
+        try:
+            lte_entry = get_netgear_lte_entry(hass, host)
+            modem = ModemConnection(lte_entry.runtime_data.modem)
+            await modem.send_sms(sender, reply)
+            LOGGER.info("test_command: sent reply to %s", sender)
+        except Exception as ex:
+            LOGGER.warning("test_command: reply send failed: %s", ex)
+
+
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:
     """Register all services for Netgear LTE SMS Manager."""
@@ -531,6 +594,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_ADD_COMMAND: (_service_add_command, ADD_COMMAND_SCHEMA),
         SERVICE_UPDATE_COMMAND: (_service_update_command, UPDATE_COMMAND_SCHEMA),
         SERVICE_REMOVE_COMMAND: (_service_remove_command, REMOVE_COMMAND_SCHEMA),
+        SERVICE_TEST_COMMAND: (_service_test_command, TEST_COMMAND_SCHEMA),
     }
 
     for service_name, (handler, schema) in service_handlers.items():

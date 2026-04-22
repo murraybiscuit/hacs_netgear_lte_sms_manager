@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, LOGGER
 from .coordinator import SMSCoordinator
-from .helpers import get_netgear_lte_entry, load_contacts
+from .helpers import get_netgear_lte_entry, load_commands, load_contacts
 from .models import NetgearLTECoreMissingError
 
 _DEVICE_INFO_KWARGS = {
@@ -68,8 +68,9 @@ class SMSInboxSensor(CoordinatorEntity[SMSCoordinator], SensorEntity):
     def extra_state_attributes(self) -> dict:
         messages = [msg.to_dict() for msg in self.coordinator.data] if self.coordinator.data else []
         contacts = load_contacts(self._entry.options)
+        commands = load_commands(self._entry.options)
         sim_number = _get_sim_number(self.hass)
-        return {"messages": messages, "contacts": contacts, "sim_number": sim_number}
+        return {"messages": messages, "contacts": contacts, "commands": commands, "sim_number": sim_number}
 
 
 class SIMNumberSensor(CoordinatorEntity[SMSCoordinator], SensorEntity):

@@ -20,6 +20,7 @@ SERVICE_SEND_WELCOME: Final = "send_welcome"
 SERVICE_ADD_COMMAND: Final = "add_command"
 SERVICE_UPDATE_COMMAND: Final = "update_command"
 SERVICE_REMOVE_COMMAND: Final = "remove_command"
+SERVICE_TEST_COMMAND: Final = "test_command"
 
 # Event names
 EVENT_SMS_INBOX_LISTED: Final = "netgear_lte_sms_manager_inbox_listed"
