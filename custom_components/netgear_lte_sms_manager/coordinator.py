@@ -16,7 +16,9 @@ from .const import (
     LOGGER,
 )
 from .helpers import (
+    build_help_reply,
     get_netgear_lte_entry,
+    is_help_message,
     is_opt_out_message,
     keyword_match,
     load_commands,
@@ -108,6 +110,15 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
 
         for msg in new_messages:
             if normalize_number(msg.sender) not in trusted_numbers:
+                continue
+
+            if is_help_message(msg.message):
+                reply = build_help_reply(commands)
+                try:
+                    await modem.send_sms(msg.sender, reply)
+                    LOGGER.info("Sent HELP reply to %s", msg.sender)
+                except Exception as ex:
+                    LOGGER.warning("HELP reply to %s failed: %s", msg.sender, ex)
                 continue
 
             command = keyword_match(msg.message, commands)

@@ -109,6 +109,23 @@ def is_opt_out_message(message: str) -> bool:
     return bool(_OPT_OUT_RE.search(message))
 
 
+_HELP_RE = re.compile(r"^\s*help\s*$", re.IGNORECASE)
+
+
+def is_help_message(text: str) -> bool:
+    return bool(_HELP_RE.match(text))
+
+
+def build_help_reply(commands: list[dict]) -> str:
+    enabled = [c for c in commands if c.get("enabled", True) is not False]
+    if not enabled:
+        return "No commands configured."
+    return "\n".join(
+        f"{c['name']}: {', '.join(c.get('keywords', []))}"
+        for c in enabled
+    )
+
+
 def normalize_number(number: str) -> str:
     return re.sub(r"\D", "", number)
 
