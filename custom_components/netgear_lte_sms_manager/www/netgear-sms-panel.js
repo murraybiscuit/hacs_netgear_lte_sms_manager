@@ -934,11 +934,25 @@ if (!customElements.get("netgear-sms-panel")) {
       nameLabel.textContent = "Command name";
       const nameInput = document.createElement("input");
       nameInput.type = "text";
-      nameInput.placeholder = "e.g. lock front door";
+      nameInput.placeholder = "e.g. Lock the front door";
       nameInput.value = f.name;
-      nameInput.oninput = (e) => { this._commandForm.name = e.target.value; };
+      const nameHint = document.createElement("div");
+      nameHint.className = "hint";
+      nameHint.textContent = "Describe the outcome as a short phrase (verb + subject). This appears in HELP replies and is used for AI matching — \u201cLock the front door\u201d is better than \u201clock\u201d.";
+      const nameWarn = document.createElement("div");
+      nameWarn.className = "hint";
+      nameWarn.style.color = "var(--warning-color, orange)";
+      nameWarn.style.display = f.name.trim() && !f.name.trim().includes(" ") ? "block" : "none";
+      nameWarn.textContent = "Single-word names are harder to match \u2014 try \u201cLock the front door\u201d instead.";
+      nameInput.oninput = (e) => {
+        this._commandForm.name = e.target.value;
+        const v = e.target.value.trim();
+        nameWarn.style.display = v && !v.includes(" ") ? "block" : "none";
+      };
       nameWrap.appendChild(nameLabel);
       nameWrap.appendChild(nameInput);
+      nameWrap.appendChild(nameHint);
+      nameWrap.appendChild(nameWarn);
       form.appendChild(nameWrap);
 
       // Keywords
