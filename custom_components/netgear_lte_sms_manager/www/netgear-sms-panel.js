@@ -24,6 +24,8 @@ if (!customElements.get("netgear-sms-panel")) {
       this._entityMissing = false;
       this._lastStateKey = undefined;
       this._blurPending = false;
+      this._commands = [];
+      this._commandForm = null; // null | {name,keywords,entityId,service,replyOk,replyFail,editingId}
     }
 
     set panel(panel) {
@@ -65,6 +67,7 @@ if (!customElements.get("netgear-sms-panel")) {
         this._editValues = null;
       }
       this._contacts = contacts;
+      this._commands = s?.attributes?.commands || [];
       this._inboxCount = s?.state ?? "?";
       this._available = s?.state !== "unavailable";
       this._simNumber = s?.attributes?.sim_number || "";
@@ -247,6 +250,30 @@ if (!customElements.get("netgear-sms-panel")) {
         .contact-form .welcome-row { display: flex; align-items: center; gap: 6px; font-size: 13px; padding-bottom: 2px; }
         .contact-form .btn-row { display: flex; gap: 6px; align-items: center; padding-bottom: 2px; }
         .dup-warn { font-size: 11px; color: var(--warning-color, orange); margin-top: 2px; }
+
+        .full-width { grid-column: 1 / -1; }
+
+        .command-form {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+          padding: 12px; margin-bottom: 12px;
+          background: var(--secondary-background-color); border-radius: 6px;
+        }
+        .command-form .full { grid-column: 1 / -1; }
+        .command-form label { font-size: 12px; color: var(--secondary-text-color); display: block; margin-bottom: 3px; }
+        .command-form input, .command-form select {
+          width: 100%; box-sizing: border-box; font-size: 13px; padding: 6px 8px;
+          border: 1px solid var(--divider-color); border-radius: 4px;
+          background: var(--card-background-color); color: var(--primary-text-color);
+          font-family: inherit;
+        }
+        .command-form input:focus, .command-form select:focus { outline: 1px solid var(--primary-color); border-color: var(--primary-color); }
+        .command-form .hint { font-size: 11px; color: var(--secondary-text-color); margin-top: 2px; }
+        .command-form .entity-name { font-size: 11px; color: var(--primary-color); margin-top: 2px; font-style: italic; }
+        .command-form .btn-row { display: flex; gap: 6px; align-items: center; }
+
+        td.cmd-keywords { font-size: 12px; color: var(--secondary-text-color); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        td.cmd-action { font-family: monospace; font-size: 12px; }
+        td.cmd-reply { font-size: 12px; color: var(--secondary-text-color); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       `;
 
       const wrapper = document.createElement("div");
@@ -290,6 +317,10 @@ if (!customElements.get("netgear-sms-panel")) {
 
       content.appendChild(this._makeInboxSection());
       content.appendChild(this._makeTrustedSendersSection());
+
+      const cmdSection = this._makeCommandsSection();
+      cmdSection.classList.add("full-width");
+      content.appendChild(cmdSection);
 
       wrapper.appendChild(content);
       root.appendChild(style);
@@ -825,6 +856,379 @@ if (!customElements.get("netgear-sms-panel")) {
       this._status = errors.length > 0
         ? { text: `Some failed: ${errors.join("; ")}`, cls: "error" }
         : { text: `Welcome sent to ${selected.length} contact(s).`, cls: "success" };
+      this._loading = false;
+      this._render();
+    }
+
+    // ── commands section ─────────────────────────────────────────────────────
+
+    _makeCommandsSection() {
+      const section = document.createElement("div");
+      section.className = "section";
+
+      const title = document.createElement("div");
+      title.className = "section-title";
+      title.textContent = `SMS Commands (${this._commands.length})`;
+      section.appendChild(title);
+
+      const desc = document.createElement("div");
+      desc.className = "section-desc";
+      desc.textContent = "Define keywords that trusted senders can SMS to trigger Home Assistant actions. Commands are matched in order — put more specific keywords first.";
+      section.appendChild(desc);
+
+      const bar = document.createElement("div");
+      bar.className = "action-bar";
+      const spacer = document.createElement("span");
+      spacer.className = "action-count";
+      spacer.textContent = "";
+      bar.appendChild(spacer);
+      const addBtn = document.createElement("button");
+      addBtn.className = "cb";
+      addBtn.textContent = "+ Add command";
+      addBtn.disabled = this._loading || this._commandForm !== null;
+      addBtn.onclick = () => {
+        this._commandForm = { name: "", keywords: "", entityId: "", service: "", replyOk: "", replyFail: "", editingId: null };
+        this._render();
+      };
+      bar.appendChild(addBtn);
+      section.appendChild(bar);
+
+      if (this._commandForm !== null) section.appendChild(this._makeCommandForm());
+
+      if (this._commands.length === 0 && this._commandForm === null) {
+        const empty = document.createElement("div");
+        empty.className = "no-messages";
+        empty.textContent = "No commands configured";
+        section.appendChild(empty);
+      } else if (this._commands.length > 0) {
+        section.appendChild(this._makeCommandsTable());
+      }
+
+      return section;
+    }
+
+    _makeCommandForm() {
+      const f = this._commandForm;
+      const isEdit = !!f.editingId;
+
+      // Derive available services for the current entity's domain
+      const domain = f.entityId ? f.entityId.split(".")[0] : "";
+      const domainSvcs = domain && this._hass.services?.[domain]
+        ? Object.keys(this._hass.services[domain]).map((s) => `${domain}.${s}`)
+        : [];
+
+      // Friendly name of selected entity
+      const entityState = f.entityId && this._hass.states?.[f.entityId];
+      const friendlyName = entityState?.attributes?.friendly_name;
+
+      const form = document.createElement("div");
+      form.className = "command-form";
+
+      // Name
+      const nameWrap = document.createElement("div");
+      nameWrap.className = "full";
+      const nameLabel = document.createElement("label");
+      nameLabel.textContent = "Command name";
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.placeholder = "e.g. lock front door";
+      nameInput.value = f.name;
+      nameInput.oninput = (e) => { this._commandForm.name = e.target.value; };
+      nameWrap.appendChild(nameLabel);
+      nameWrap.appendChild(nameInput);
+      form.appendChild(nameWrap);
+
+      // Keywords
+      const kwWrap = document.createElement("div");
+      kwWrap.className = "full";
+      const kwLabel = document.createElement("label");
+      kwLabel.textContent = "Keywords";
+      const kwInput = document.createElement("input");
+      kwInput.type = "text";
+      kwInput.placeholder = "lock, lock door, lock up";
+      kwInput.value = f.keywords;
+      kwInput.oninput = (e) => { this._commandForm.keywords = e.target.value; };
+      const kwHint = document.createElement("div");
+      kwHint.className = "hint";
+      kwHint.textContent = "Comma-separated. SMS must contain one of these words/phrases.";
+      kwWrap.appendChild(kwLabel);
+      kwWrap.appendChild(kwInput);
+      kwWrap.appendChild(kwHint);
+      form.appendChild(kwWrap);
+
+      // Entity picker
+      const entityWrap = document.createElement("div");
+      const entityLabel = document.createElement("label");
+      entityLabel.textContent = "Entity";
+      const entityInput = document.createElement("input");
+      entityInput.type = "text";
+      entityInput.placeholder = "lock.front_door_smart_lock";
+      entityInput.value = f.entityId;
+      entityInput.setAttribute("list", "cmd-entity-list");
+      entityInput.oninput = (e) => { this._commandForm.entityId = e.target.value; };
+      entityInput.onchange = (e) => {
+        const newDomain = e.target.value.split(".")[0];
+        const oldDomain = (this._commandForm.service || "").split(".")[0];
+        if (newDomain !== oldDomain) this._commandForm.service = "";
+        this._commandForm.entityId = e.target.value;
+        this._render();
+      };
+      // Datalist of all HA entities
+      const dl = document.createElement("datalist");
+      dl.id = "cmd-entity-list";
+      for (const [eid, state] of Object.entries(this._hass.states || {}).sort()) {
+        const opt = document.createElement("option");
+        opt.value = eid;
+        opt.textContent = state.attributes?.friendly_name || eid;
+        dl.appendChild(opt);
+      }
+      entityWrap.appendChild(entityLabel);
+      entityWrap.appendChild(entityInput);
+      entityWrap.appendChild(dl);
+      if (friendlyName) {
+        const fn = document.createElement("div");
+        fn.className = "entity-name";
+        fn.textContent = friendlyName;
+        entityWrap.appendChild(fn);
+      }
+      form.appendChild(entityWrap);
+
+      // Service/action picker
+      const svcWrap = document.createElement("div");
+      const svcLabel = document.createElement("label");
+      svcLabel.textContent = "Action";
+      svcWrap.appendChild(svcLabel);
+
+      if (domainSvcs.length > 0) {
+        const svcSelect = document.createElement("select");
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "— select action —";
+        svcSelect.appendChild(placeholder);
+        for (const svc of domainSvcs) {
+          const opt = document.createElement("option");
+          opt.value = svc;
+          opt.textContent = svc;
+          if (svc === f.service) opt.selected = true;
+          svcSelect.appendChild(opt);
+        }
+        svcSelect.onchange = (e) => { this._commandForm.service = e.target.value; };
+        svcWrap.appendChild(svcSelect);
+      } else {
+        const svcInput = document.createElement("input");
+        svcInput.type = "text";
+        svcInput.placeholder = domain ? `${domain}.???` : "lock.lock";
+        svcInput.value = f.service;
+        svcInput.oninput = (e) => { this._commandForm.service = e.target.value; };
+        const svcHint = document.createElement("div");
+        svcHint.className = "hint";
+        svcHint.textContent = domain ? `No actions found for domain "${domain}"` : "Select an entity first to see available actions.";
+        svcWrap.appendChild(svcInput);
+        svcWrap.appendChild(svcHint);
+      }
+      form.appendChild(svcWrap);
+
+      // Reply OK
+      const replyOkWrap = document.createElement("div");
+      const replyOkLabel = document.createElement("label");
+      replyOkLabel.textContent = "Reply on success";
+      const replyOkInput = document.createElement("input");
+      replyOkInput.type = "text";
+      replyOkInput.placeholder = "Front door locked.";
+      replyOkInput.value = f.replyOk;
+      replyOkInput.oninput = (e) => { this._commandForm.replyOk = e.target.value; };
+      replyOkWrap.appendChild(replyOkLabel);
+      replyOkWrap.appendChild(replyOkInput);
+      form.appendChild(replyOkWrap);
+
+      // Reply fail
+      const replyFailWrap = document.createElement("div");
+      const replyFailLabel = document.createElement("label");
+      replyFailLabel.textContent = "Reply on failure";
+      const replyFailInput = document.createElement("input");
+      replyFailInput.type = "text";
+      replyFailInput.placeholder = "Failed to lock front door.";
+      replyFailInput.value = f.replyFail;
+      replyFailInput.oninput = (e) => { this._commandForm.replyFail = e.target.value; };
+      replyFailWrap.appendChild(replyFailLabel);
+      replyFailWrap.appendChild(replyFailInput);
+      form.appendChild(replyFailWrap);
+
+      // Buttons
+      const btnRow = document.createElement("div");
+      btnRow.className = "full btn-row";
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "cb";
+      saveBtn.textContent = isEdit ? "Save changes" : "Add command";
+      saveBtn.disabled = this._loading;
+      saveBtn.onclick = () => this._saveCommand(nameInput, kwInput, entityInput, svcWrap);
+      btnRow.appendChild(saveBtn);
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "cb";
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.onclick = () => { this._commandForm = null; this._render(); };
+      btnRow.appendChild(cancelBtn);
+      form.appendChild(btnRow);
+
+      return form;
+    }
+
+    _makeCommandsTable() {
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const hr = document.createElement("tr");
+      for (const label of ["Name", "Keywords", "Action", "Reply OK", ""]) {
+        const th = document.createElement("th");
+        th.textContent = label;
+        hr.appendChild(th);
+      }
+      thead.appendChild(hr);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      for (const cmd of this._commands) {
+        const tr = document.createElement("tr");
+
+        const nameTd = document.createElement("td");
+        nameTd.style.fontWeight = "500";
+        nameTd.textContent = cmd.name;
+        tr.appendChild(nameTd);
+
+        const kwTd = document.createElement("td");
+        kwTd.className = "cmd-keywords";
+        kwTd.title = (cmd.keywords || []).join(", ");
+        kwTd.textContent = (cmd.keywords || []).join(", ");
+        tr.appendChild(kwTd);
+
+        const actTd = document.createElement("td");
+        actTd.className = "cmd-action";
+        actTd.textContent = `${cmd.service} → ${cmd.entity_id}`;
+        tr.appendChild(actTd);
+
+        const replyTd = document.createElement("td");
+        replyTd.className = "cmd-reply";
+        replyTd.title = cmd.reply_ok || "—";
+        replyTd.textContent = cmd.reply_ok || "—";
+        tr.appendChild(replyTd);
+
+        const actionsTd = document.createElement("td");
+        actionsTd.className = "edit-actions";
+        const btnWrap = document.createElement("div");
+        btnWrap.className = "edit-btns";
+
+        const testBtn = document.createElement("button");
+        testBtn.className = "cb";
+        testBtn.textContent = "Test";
+        testBtn.title = "Run this command now from the first trusted contact";
+        testBtn.disabled = this._loading || this._contacts.length === 0;
+        testBtn.onclick = () => this._testCommand(cmd);
+        btnWrap.appendChild(testBtn);
+
+        const editBtn = document.createElement("button");
+        editBtn.className = "cb";
+        editBtn.textContent = "Edit";
+        editBtn.disabled = this._loading || this._commandForm !== null;
+        editBtn.onclick = () => {
+          this._commandForm = {
+            name: cmd.name,
+            keywords: (cmd.keywords || []).join(", "),
+            entityId: cmd.entity_id || "",
+            service: cmd.service || "",
+            replyOk: cmd.reply_ok || "",
+            replyFail: cmd.reply_fail || "",
+            editingId: cmd.uuid,
+          };
+          this._render();
+        };
+        btnWrap.appendChild(editBtn);
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "cb";
+        delBtn.textContent = "Delete";
+        delBtn.disabled = this._loading;
+        delBtn.onclick = () => this._deleteCommand(cmd.uuid, cmd.name);
+        btnWrap.appendChild(delBtn);
+
+        actionsTd.appendChild(btnWrap);
+        tr.appendChild(actionsTd);
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      return table;
+    }
+
+    async _saveCommand(nameInput, kwInput, entityInput, svcWrap) {
+      const f = this._commandForm;
+      // Read latest input values (in case blur-defer hasn't flushed yet)
+      const name = nameInput.value.trim();
+      const keywords = kwInput.value.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean);
+      const entityId = entityInput.value.trim();
+      const svcEl = svcWrap.querySelector("select") || svcWrap.querySelector("input[type=text]");
+      const service = svcEl ? svcEl.value.trim() : f.service;
+
+      if (!name) { this._status = { text: "Command name is required.", cls: "error" }; this._render(); return; }
+      if (keywords.length === 0) { this._status = { text: "At least one keyword is required.", cls: "error" }; this._render(); return; }
+      if (!entityId) { this._status = { text: "Entity is required.", cls: "error" }; this._render(); return; }
+      if (!service || !service.includes(".")) { this._status = { text: "A valid action is required (e.g. lock.lock).", cls: "error" }; this._render(); return; }
+
+      this._loading = true;
+      this._status = { text: f.editingId ? `Saving "${name}"…` : `Adding "${name}"…`, cls: "loading" };
+      this._render();
+
+      try {
+        if (f.editingId) {
+          await this._hass.callService("netgear_lte_sms_manager", "update_command", {
+            command_id: f.editingId,
+            name, keywords, service, entity_id: entityId,
+            reply_ok: f.replyOk || "", reply_fail: f.replyFail || "",
+          });
+        } else {
+          await this._hass.callService("netgear_lte_sms_manager", "add_command", {
+            name, keywords, service, entity_id: entityId,
+            reply_ok: f.replyOk || "", reply_fail: f.replyFail || "",
+          });
+        }
+        this._commandForm = null;
+        this._status = { text: f.editingId ? `Saved "${name}".` : `Added "${name}".`, cls: "success" };
+        await this._hass.callService("homeassistant", "update_entity", { entity_id: this._config.entity });
+      } catch (err) {
+        this._status = { text: `Error: ${err.message}`, cls: "error" };
+      }
+      this._loading = false;
+      this._render();
+    }
+
+    async _deleteCommand(uuid, name) {
+      if (!confirm(`Delete command "${name}"?`)) return;
+      this._loading = true;
+      this._status = { text: `Deleting "${name}"…`, cls: "loading" };
+      this._render();
+      try {
+        await this._hass.callService("netgear_lte_sms_manager", "remove_command", { command_id: uuid });
+        this._status = { text: `Deleted "${name}".`, cls: "success" };
+        await this._hass.callService("homeassistant", "update_entity", { entity_id: this._config.entity });
+      } catch (err) {
+        this._status = { text: `Error: ${err.message}`, cls: "error" };
+      }
+      this._loading = false;
+      this._render();
+    }
+
+    async _testCommand(cmd) {
+      const sender = this._contacts[0]?.number;
+      if (!sender) { this._status = { text: "No trusted contacts — add one first.", cls: "error" }; this._render(); return; }
+      const keyword = cmd.keywords?.[0] || cmd.name;
+      this._loading = true;
+      this._status = { text: `Testing "${cmd.name}" with message "${keyword}"…`, cls: "loading" };
+      this._render();
+      try {
+        await this._hass.callService("netgear_lte_sms_manager", "test_command", {
+          message: keyword, sender, send_reply: false,
+        });
+        this._status = { text: `"${cmd.name}" executed successfully.`, cls: "success" };
+      } catch (err) {
+        this._status = { text: `Test failed: ${err.message}`, cls: "error" };
+      }
       this._loading = false;
       this._render();
     }
