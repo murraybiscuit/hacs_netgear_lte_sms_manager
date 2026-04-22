@@ -7,8 +7,23 @@ from datetime import timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_AUTO_OPT_OUT, DOMAIN, EVENT_AUTO_OPT_OUT, EVENT_NEW_SMS, LOGGER
-from .helpers import get_netgear_lte_entry, is_opt_out_message, parse_whitelist_options
+from .const import (
+    CONF_AUTO_OPT_OUT,
+    DOMAIN,
+    EVENT_AUTO_OPT_OUT,
+    EVENT_COMMAND_EXECUTED,
+    EVENT_NEW_SMS,
+    LOGGER,
+)
+from .helpers import (
+    get_netgear_lte_entry,
+    is_opt_out_message,
+    keyword_match,
+    load_commands,
+    load_contacts,
+    normalize_number,
+    parse_whitelist_options,
+)
 from .models import (
     EternalEgyptVersionError,
     ModemCommunicationError,
@@ -65,6 +80,8 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
                 )
                 LOGGER.debug("New SMS from %s (id=%d)", msg.sender, msg.id)
 
+            await self._dispatch_commands(modem, new_messages)
+
             if self._entry.options.get(CONF_AUTO_OPT_OUT, False) and new_messages:
                 opted_out = await self._auto_opt_out(modem, new_messages)
                 if opted_out:
@@ -74,6 +91,54 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
         self._first_poll = False
         self._last_seen_ids = current_ids
         return messages
+
+    async def _dispatch_commands(
+        self, modem: ModemConnection, new_messages: list[SMSMessage]
+    ) -> None:
+        """Match new messages from trusted contacts against commands and execute."""
+        commands = load_commands(self._entry.options)
+        if not commands:
+            return
+
+        contacts = load_contacts(self._entry.options)
+        trusted_numbers = {normalize_number(c["number"]) for c in contacts}
+
+        for msg in new_messages:
+            if normalize_number(msg.sender) not in trusted_numbers:
+                continue
+
+            command = keyword_match(msg.message, commands)
+            if command is None:
+                continue
+
+            domain, service = command["service"].split(".", 1)
+            service_data = {"entity_id": command["entity_id"], **command.get("service_data", {})}
+
+            success = True
+            try:
+                await self.hass.services.async_call(domain, service, service_data, blocking=True)
+                LOGGER.info("Command '%s' executed for %s", command["name"], msg.sender)
+                reply = command.get("reply_ok", "")
+            except Exception as ex:
+                LOGGER.warning("Command '%s' failed for %s: %s", command["name"], msg.sender, ex)
+                success = False
+                reply = command.get("reply_fail", "")
+
+            self.hass.bus.async_fire(
+                EVENT_COMMAND_EXECUTED,
+                {
+                    "command": command["name"],
+                    "sender": msg.sender,
+                    "message": msg.message,
+                    "success": success,
+                },
+            )
+
+            if reply:
+                try:
+                    await modem.send_sms(msg.sender, reply)
+                except Exception as ex:
+                    LOGGER.warning("Reply to %s failed: %s", msg.sender, ex)
 
     async def _auto_opt_out(
         self, modem: ModemConnection, new_messages: list[SMSMessage]
