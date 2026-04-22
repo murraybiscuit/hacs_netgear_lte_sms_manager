@@ -423,6 +423,7 @@ ADD_COMMAND_SCHEMA = vol.Schema(
         vol.Optional("service_data", default={}): dict,
         vol.Optional("reply_ok", default=""): cv.string,
         vol.Optional("reply_fail", default=""): cv.string,
+        vol.Optional("enabled", default=True): cv.boolean,
     }
 )
 
@@ -436,6 +437,7 @@ UPDATE_COMMAND_SCHEMA = vol.Schema(
         vol.Optional("service_data", default={}): dict,
         vol.Optional("reply_ok", default=""): cv.string,
         vol.Optional("reply_fail", default=""): cv.string,
+        vol.Optional("enabled", default=True): cv.boolean,
     }
 )
 
@@ -459,6 +461,7 @@ async def _service_add_command(call: ServiceCall) -> None:
         "service_data": call.data.get("service_data", {}),
         "reply_ok": call.data.get("reply_ok", ""),
         "reply_fail": call.data.get("reply_fail", ""),
+        "enabled": call.data.get("enabled", True),
     }
     commands.append(new_command)
     hass.config_entries.async_update_entry(
@@ -489,6 +492,7 @@ async def _service_update_command(call: ServiceCall) -> None:
         "service_data": call.data.get("service_data", {}),
         "reply_ok": call.data.get("reply_ok", ""),
         "reply_fail": call.data.get("reply_fail", ""),
+        "enabled": call.data.get("enabled", True),
     })
     hass.config_entries.async_update_entry(
         sms_entry, options={**sms_entry.options, "commands": save_commands(commands)}

@@ -274,6 +274,9 @@ if (!customElements.get("netgear-sms-panel")) {
         td.cmd-keywords { font-size: 12px; color: var(--secondary-text-color); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         td.cmd-action { font-family: monospace; font-size: 12px; }
         td.cmd-reply { font-size: 12px; color: var(--secondary-text-color); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        tr.cmd-disabled td { opacity: 0.45; }
+        tr.cmd-disabled td.cmd-toggle { opacity: 1; }
+        td.cmd-toggle { width: 32px; text-align: center; }
       `;
 
       const wrapper = document.createElement("div");
@@ -1077,7 +1080,7 @@ if (!customElements.get("netgear-sms-panel")) {
       const table = document.createElement("table");
       const thead = document.createElement("thead");
       const hr = document.createElement("tr");
-      for (const label of ["Name", "Keywords", "Action", "Reply OK", ""]) {
+      for (const label of ["On", "Name", "Keywords", "Action", "Reply OK", ""]) {
         const th = document.createElement("th");
         th.textContent = label;
         hr.appendChild(th);
@@ -1087,7 +1090,20 @@ if (!customElements.get("netgear-sms-panel")) {
 
       const tbody = document.createElement("tbody");
       for (const cmd of this._commands) {
+        const enabled = cmd.enabled !== false;
         const tr = document.createElement("tr");
+        if (!enabled) tr.classList.add("cmd-disabled");
+
+        const toggleTd = document.createElement("td");
+        toggleTd.className = "cmd-toggle";
+        const toggleCb = document.createElement("input");
+        toggleCb.type = "checkbox";
+        toggleCb.checked = enabled;
+        toggleCb.disabled = this._loading;
+        toggleCb.title = enabled ? "Disable command" : "Enable command";
+        toggleCb.onchange = () => this._toggleCommand(cmd);
+        toggleTd.appendChild(toggleCb);
+        tr.appendChild(toggleTd);
 
         const nameTd = document.createElement("td");
         nameTd.style.fontWeight = "500";
@@ -1228,6 +1244,31 @@ if (!customElements.get("netgear-sms-panel")) {
         this._status = { text: `"${cmd.name}" executed successfully.`, cls: "success" };
       } catch (err) {
         this._status = { text: `Test failed: ${err.message}`, cls: "error" };
+      }
+      this._loading = false;
+      this._render();
+    }
+
+    async _toggleCommand(cmd) {
+      const currentEnabled = cmd.enabled !== false;
+      const newEnabled = !currentEnabled;
+      this._loading = true;
+      this._render();
+      try {
+        await this._hass.callService("netgear_lte_sms_manager", "update_command", {
+          command_id: cmd.uuid,
+          name: cmd.name,
+          keywords: cmd.keywords || [],
+          service: cmd.service,
+          entity_id: cmd.entity_id,
+          reply_ok: cmd.reply_ok || "",
+          reply_fail: cmd.reply_fail || "",
+          enabled: newEnabled,
+        });
+        this._status = { text: `"${cmd.name}" ${newEnabled ? "enabled" : "disabled"}.`, cls: "success" };
+        await this._hass.callService("homeassistant", "update_entity", { entity_id: this._config.entity });
+      } catch (err) {
+        this._status = { text: `Error: ${err.message}`, cls: "error" };
       }
       this._loading = false;
       this._render();

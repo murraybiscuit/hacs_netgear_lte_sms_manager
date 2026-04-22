@@ -155,9 +155,11 @@ def save_commands(commands: list[dict]) -> str:
 
 
 def keyword_match(text: str, commands: list[dict]) -> dict | None:
-    """Return the first command whose keyword appears in text as whole words (case-insensitive)."""
+    """Return the first enabled command whose keyword appears in text as whole words (case-insensitive)."""
     normalized = re.sub(r"[^\w\s]", "", text.lower()).strip()
     for command in commands:
+        if command.get("enabled", True) is False:
+            continue
         for kw in command.get("keywords", []):
             pattern = r"\b" + re.escape(kw.lower().strip()) + r"\b"
             if re.search(pattern, normalized):
