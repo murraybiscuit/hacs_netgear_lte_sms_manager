@@ -3,6 +3,9 @@
     "sensor": {
       "sms_inbox": {
         "name": "Inbox"
+      },
+      "sim_number": {
+        "name": "SIM number"
       }
     }
   },

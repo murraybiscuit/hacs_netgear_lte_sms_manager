@@ -23,6 +23,7 @@ if (!customElements.get("netgear-sms-panel")) {
       this._status = null;
       this._entityMissing = false;
       this._lastStateKey = undefined;
+      this._blurPending = false;
     }
 
     set panel(panel) {
@@ -111,6 +112,18 @@ if (!customElements.get("netgear-sms-panel")) {
     _render() {
       if (!this._hass) return;
       const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+
+      // Don't wipe the DOM while the user is typing — defer until focus leaves
+      const focused = root.activeElement;
+      if (focused && (focused.tagName === "INPUT" || focused.tagName === "TEXTAREA")) {
+        if (!this._blurPending) {
+          this._blurPending = true;
+          focused.addEventListener("blur", () => { this._blurPending = false; this._render(); }, { once: true });
+        }
+        return;
+      }
+      this._blurPending = false;
+
       root.innerHTML = "";
 
       const style = document.createElement("style");

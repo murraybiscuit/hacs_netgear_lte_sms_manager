@@ -22,6 +22,12 @@ SERVICE_SEND_WELCOME: Final = "send_welcome"
 EVENT_SMS_INBOX_LISTED: Final = "netgear_lte_sms_manager_inbox_listed"
 EVENT_CLEANUP_COMPLETE: Final = "netgear_lte_sms_manager_cleanup_complete"
 EVENT_NEW_SMS: Final = "netgear_lte_sms_manager_new_sms"
+EVENT_SMS_DELETED: Final = "netgear_lte_sms_manager_sms_deleted"
+EVENT_SMS_SENT: Final = "netgear_lte_sms_manager_sms_sent"
+EVENT_CONTACT_ADDED: Final = "netgear_lte_sms_manager_contact_added"
+EVENT_CONTACT_UPDATED: Final = "netgear_lte_sms_manager_contact_updated"
+EVENT_CONTACT_REMOVED: Final = "netgear_lte_sms_manager_contact_removed"
+EVENT_AUTO_OPT_OUT: Final = "netgear_lte_sms_manager_auto_opt_out"
 
 # Attributes
 ATTR_HOST: Final = "host"

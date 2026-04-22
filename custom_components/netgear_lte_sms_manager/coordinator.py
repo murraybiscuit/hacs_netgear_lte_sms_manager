@@ -7,7 +7,7 @@ from datetime import timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_AUTO_OPT_OUT, DOMAIN, EVENT_NEW_SMS, LOGGER
+from .const import CONF_AUTO_OPT_OUT, DOMAIN, EVENT_AUTO_OPT_OUT, EVENT_NEW_SMS, LOGGER
 from .helpers import get_netgear_lte_entry, is_opt_out_message, parse_whitelist_options
 from .models import (
     EternalEgyptVersionError,
@@ -100,6 +100,10 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
                     "Auto opted out: sent STOP to %s, deleted message %d",
                     msg.sender,
                     msg.id,
+                )
+                self.hass.bus.async_fire(
+                    EVENT_AUTO_OPT_OUT,
+                    {"sender": msg.sender, "sms_id": msg.id, "message": msg.message},
                 )
             except Exception as ex:
                 LOGGER.warning(

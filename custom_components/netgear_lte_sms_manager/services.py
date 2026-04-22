@@ -28,7 +28,12 @@ from .const import (
     DEFAULT_WELCOME_MESSAGE,
     DOMAIN,
     EVENT_CLEANUP_COMPLETE,
+    EVENT_CONTACT_ADDED,
+    EVENT_CONTACT_REMOVED,
+    EVENT_CONTACT_UPDATED,
+    EVENT_SMS_DELETED,
     EVENT_SMS_INBOX_LISTED,
+    EVENT_SMS_SENT,
     LOGGER,
     SERVICE_ADD_CONTACT,
     SERVICE_CLEANUP_INBOX,
@@ -137,6 +142,10 @@ async def _service_delete_sms(call: ServiceCall) -> None:
         LOGGER.info("Deleting %d SMS from %s", len(sms_ids), entry.data.get("host"))
         deleted_count = await modem.delete_sms_batch(sms_ids)
         LOGGER.info("Successfully deleted %d SMS", deleted_count)
+        hass.bus.async_fire(
+            EVENT_SMS_DELETED,
+            {ATTR_HOST: entry.data.get("host"), ATTR_SMS_ID: sms_ids, ATTR_COUNT_DELETED: deleted_count},
+        )
     except NetgearLTECoreMissingError as ex:
         raise ServiceValidationError(str(ex), translation_domain=DOMAIN) from ex
     except EternalEgyptVersionError as ex:
@@ -302,6 +311,7 @@ async def _service_add_contact(call: ServiceCall) -> None:
             sms_entry, options={**sms_entry.options, "contacts": save_contacts(contacts)}
         )
         LOGGER.info("Added contact %s (%s)", name, number)
+        hass.bus.async_fire(EVENT_CONTACT_ADDED, {"name": name, "number": number})
 
     if do_send_welcome:
         welcome_msg = sms_entry.options.get(CONF_WELCOME_MESSAGE, DEFAULT_WELCOME_MESSAGE)
@@ -344,6 +354,7 @@ async def _service_update_contact(call: ServiceCall) -> None:
         sms_entry, options={**sms_entry.options, "contacts": save_contacts(contacts)}
     )
     LOGGER.info("Updated contact %s → %s (%s)", contact_id, name, number)
+    hass.bus.async_fire(EVENT_CONTACT_UPDATED, {"contact_id": contact_id, "name": name, "number": number})
 
 
 async def _service_remove_contact(call: ServiceCall) -> None:
@@ -365,6 +376,7 @@ async def _service_remove_contact(call: ServiceCall) -> None:
         sms_entry, options={**sms_entry.options, "contacts": save_contacts(new_contacts)}
     )
     LOGGER.info("Removed contact %s", contact_id)
+    hass.bus.async_fire(EVENT_CONTACT_REMOVED, {"contact_id": contact_id})
 
 
 async def _service_send_welcome(call: ServiceCall) -> None:
@@ -382,6 +394,7 @@ async def _service_send_welcome(call: ServiceCall) -> None:
         modem = ModemConnection(lte_entry.runtime_data.modem)
         await modem.send_sms(number, welcome_msg)
         LOGGER.info("Sent welcome message to %s", number)
+        hass.bus.async_fire(EVENT_SMS_SENT, {ATTR_HOST: lte_entry.data.get("host"), "number": number, "type": "welcome"})
     except NetgearLTECoreMissingError as ex:
         raise ServiceValidationError(str(ex), translation_domain=DOMAIN) from ex
     except (EternalEgyptVersionError, ModemCommunicationError) as ex:

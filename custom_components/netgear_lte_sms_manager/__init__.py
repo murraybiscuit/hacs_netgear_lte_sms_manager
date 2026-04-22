@@ -49,7 +49,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     await panel_custom.async_register_panel(
         hass,
         webcomponent_name="netgear-sms-panel",
-        sidebar_title="SMS Manager",
+        sidebar_title="Netgear SMS Manager",
         sidebar_icon="mdi:message-text-outline",
         frontend_url_path="netgear-sms-manager",
         config={"entity": _PANEL_ENTITY},
