@@ -5,6 +5,12 @@
 
 A Home Assistant custom component that extends the core `netgear_lte` integration with SMS inbox management and SMS-triggered home automation commands.
 
+## Screenshots
+
+![Panel inbox](screenshots/panel_inbox.png)
+
+*Main panel — inbox, trusted senders, and SMS commands at a glance*
+
 ## Overview
 
 The core `netgear_lte` integration can send SMS but cannot read or manage the inbox. Netgear LTE modems hold around 20 messages — once full, new messages stop arriving. This component solves that with automatic inbox management, and builds on it to let trusted contacts control your home by SMS.
@@ -44,6 +50,8 @@ This integration is not in the HACS default store. Add it as a custom repository
 Copy `custom_components/netgear_lte_sms_manager/` into your `config/custom_components/` directory and restart Home Assistant.
 
 ## Configuration
+
+![Options screen](screenshots/panel-options.png)
 
 After adding the integration, open the sidebar panel **Netgear SMS Manager** or go to **Settings → Integrations → Netgear LTE SMS Manager → Configure** to adjust:
 
@@ -88,6 +96,8 @@ When keyword matching finds no match, LLM matching (if enabled) sends the messag
 
 Requires Ollama configured as a Home Assistant conversation agent. Auto-detects the Ollama URL and model from the HA config entry.
 
+![LLM confirmation round-trip](screenshots/mobile-llm-confirmation.png)
+
 #### Why Ollama directly, not the HA voice assistant?
 
 HA's `conversation.async_converse` API routes all text through the home control pipeline, which wraps the LLM in a system prompt about device control and enables tool calls for executing HA services. Sending a classification prompt like *"which command matches this message?"* through that pipeline causes the LLM to interpret it as a home control request and attempt to execute intents — not classify text.
@@ -97,6 +107,8 @@ This component calls the Ollama `/api/generate` endpoint directly, bypassing the
 ### HELP autoresponder
 
 Any trusted contact can SMS **help** to get a list of enabled commands and their keywords.
+
+![SMS commands](screenshots/panel-sms-commands.png)
 
 ### Managing commands
 
@@ -109,6 +121,8 @@ Commands are managed through the sidebar panel UI or via HA services (`add_comma
 - **Success/failure replies** — optional SMS sent back to the sender
 
 ## Trusted Contacts
+
+![Trusted senders](screenshots/panel-trusted-senders.png)
 
 Only contacts in the trusted list can trigger commands. Manage them via the panel or services.
 
