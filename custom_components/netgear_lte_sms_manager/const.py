@@ -52,12 +52,14 @@ ATTR_TIMESTAMP: Final = "timestamp"
 CONF_POLL_INTERVAL: Final = "poll_interval"
 CONF_AUTO_OPT_OUT: Final = "auto_opt_out"
 CONF_WELCOME_MESSAGE: Final = "welcome_message"
+CONF_LLM_MATCHING: Final = "llm_matching"
 
 # Defaults
 DEFAULT_RETAIN_COUNT: Final = 24
 DEFAULT_RETAIN_DAYS: Final = 0
 DEFAULT_DRY_RUN: Final = True
 DEFAULT_POLL_INTERVAL: Final = 30
+DEFAULT_LLM_MATCHING: Final = False
 DEFAULT_WELCOME_MESSAGE: Final = (
     "Welcome to Home Assistant! Reply to this number to issue a simple command "
     "e.g. 'Lock front door'. Reply 'help' for available commands."

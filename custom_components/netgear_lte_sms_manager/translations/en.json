@@ -24,12 +24,14 @@
         "data": {
           "poll_interval": "Poll interval",
           "auto_opt_out": "Auto opt-out",
-          "welcome_message": "Welcome message"
+          "welcome_message": "Welcome message",
+          "llm_matching": "AI command matching"
         },
         "data_description": {
           "poll_interval": "How often to check the modem inbox for new messages (seconds).",
           "auto_opt_out": "Look for unsubscribe keywords to opt out and auto delete spam messages.",
-          "welcome_message": "Message sent to new trusted senders when they are added."
+          "welcome_message": "Message sent to new trusted senders when they are added.",
+          "llm_matching": "Use the configured AI conversation agent to match messages that don't match any keyword. Falls back silently if the agent is unavailable."
         }
       }
     }

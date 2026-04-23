@@ -9,6 +9,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_AUTO_OPT_OUT,
+    CONF_LLM_MATCHING,
     DOMAIN,
     EVENT_AUTO_OPT_OUT,
     EVENT_COMMAND_EXECUTED,
@@ -124,6 +125,12 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
                 continue
 
             command = keyword_match(msg.message, commands)
+
+            if command is None and self._entry.options.get(CONF_LLM_MATCHING, False):
+                command = await self._llm_classify(msg.message, commands)
+                if command is not None:
+                    LOGGER.debug("LLM matched '%s' for message: %s", command["name"], msg.message)
+
             if command is None:
                 disabled = keyword_match(msg.message, commands, include_disabled=True)
                 if disabled:
@@ -161,6 +168,47 @@ class SMSCoordinator(DataUpdateCoordinator[list[SMSMessage]]):
                     await modem.send_sms(sender_digits, reply)
                 except Exception as ex:
                     LOGGER.warning("Reply to %s failed: %s", sender_digits, ex)
+
+    async def _llm_classify(self, text: str, commands: list[dict]) -> dict | None:
+        """Use the configured HA conversation agent to classify text against enabled commands."""
+        from homeassistant.components.conversation import async_converse
+        from homeassistant.core import Context
+
+        enabled = [c for c in commands if c.get("enabled", True) is not False]
+        if not enabled:
+            return None
+
+        names = "\n".join(f"- {c['name']}" for c in enabled)
+        prompt = (
+            "From this list of commands, which one does the message below most closely match?\n"
+            "Reply with ONLY the exact command name from the list, or the word \"none\" if nothing matches.\n\n"
+            f"Commands:\n{names}\n\n"
+            f"Message: \"{text}\""
+        )
+
+        try:
+            result = await async_converse(
+                hass=self.hass,
+                text=prompt,
+                conversation_id=None,
+                context=Context(),
+            )
+            response = result.response.speech.get("plain", {}).get("speech", "").strip()
+            response_lower = response.lower()
+
+            if not response or response_lower == "none":
+                return None
+
+            for cmd in enabled:
+                if cmd["name"].lower() == response_lower:
+                    return cmd
+            for cmd in enabled:
+                if cmd["name"].lower() in response_lower:
+                    return cmd
+        except Exception as ex:
+            LOGGER.debug("LLM classification failed, falling back to no match: %s", ex)
+
+        return None
 
     async def _auto_opt_out(
         self, modem: ModemConnection, new_messages: list[SMSMessage]

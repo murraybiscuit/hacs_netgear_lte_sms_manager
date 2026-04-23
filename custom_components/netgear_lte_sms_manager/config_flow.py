@@ -10,8 +10,10 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_AUTO_OPT_OUT,
+    CONF_LLM_MATCHING,
     CONF_POLL_INTERVAL,
     CONF_WELCOME_MESSAGE,
+    DEFAULT_LLM_MATCHING,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_WELCOME_MESSAGE,
     DOMAIN,
@@ -72,6 +74,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_WELCOME_MESSAGE, DEFAULT_WELCOME_MESSAGE
                         ),
                     ): selector.selector({"text": {"multiline": True}}),
+                    vol.Required(
+                        CONF_LLM_MATCHING,
+                        default=self.config_entry.options.get(
+                            CONF_LLM_MATCHING, DEFAULT_LLM_MATCHING
+                        ),
+                    ): selector.selector({"boolean": {}}),
                 }
             ),
         )
