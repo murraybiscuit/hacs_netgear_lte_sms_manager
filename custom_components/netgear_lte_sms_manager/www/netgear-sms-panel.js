@@ -140,7 +140,7 @@ if (!customElements.get("netgear-sms-panel")) {
         .panel-header {
           background: var(--app-header-background-color, var(--primary-color));
           color: var(--app-header-text-color, white);
-          padding: 0 16px;
+          padding: 0 8px 0 0;
           height: 56px;
           display: flex;
           align-items: center;
@@ -148,6 +148,13 @@ if (!customElements.get("netgear-sms-panel")) {
           font-weight: 400;
           letter-spacing: 0.01em;
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .panel-header-title {
+          flex: 1;
+          padding-left: 8px;
+        }
+        .panel-header ha-menu-button {
+          color: var(--app-header-text-color, white);
         }
         .panel-content {
           max-width: 1100px;
@@ -281,7 +288,14 @@ if (!customElements.get("netgear-sms-panel")) {
 
       const header = document.createElement("div");
       header.className = "panel-header";
-      header.textContent = "Netgear LTE SMS Manager";
+      const menuBtn = document.createElement("ha-menu-button");
+      menuBtn.hass = this._hass;
+      menuBtn.narrow = true;
+      header.appendChild(menuBtn);
+      const headerTitle = document.createElement("span");
+      headerTitle.className = "panel-header-title";
+      headerTitle.textContent = "Netgear LTE SMS Manager";
+      header.appendChild(headerTitle);
       wrapper.appendChild(header);
 
       const content = document.createElement("div");
