@@ -7,7 +7,7 @@ A Home Assistant custom component that extends the core `netgear_lte` integratio
 
 ## Screenshots
 
-![Panel inbox](screenshots/panel_inbox.png)
+![Panel inbox](screenshots/panel-inbox.png)
 
 *Main panel — inbox, trusted senders, and SMS commands at a glance*
 
