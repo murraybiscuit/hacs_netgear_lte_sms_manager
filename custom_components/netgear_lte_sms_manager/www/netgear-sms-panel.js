@@ -117,8 +117,9 @@ if (!customElements.get("netgear-sms-panel")) {
       const root = this.shadowRoot || this.attachShadow({ mode: "open" });
 
       // Don't wipe the DOM while the user is typing — defer until focus leaves
+      // Exclude checkboxes: they're instant-state, not text entry, and must render immediately
       const focused = root.activeElement;
-      if (focused && (focused.tagName === "INPUT" || focused.tagName === "TEXTAREA")) {
+      if (focused && (focused.tagName === "TEXTAREA" || (focused.tagName === "INPUT" && focused.type !== "checkbox"))) {
         if (!this._blurPending) {
           this._blurPending = true;
           focused.addEventListener("blur", () => { this._blurPending = false; this._render(); }, { once: true });
