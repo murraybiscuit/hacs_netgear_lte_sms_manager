@@ -3,337 +3,180 @@
 [![HACS Badge](https://img.shields.io/badge/HACS-Custom-41BDF5?logo=home%20assistant&logoColor=white)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Home Assistant custom component that extends the core `netgear_lte` integration with comprehensive SMS inbox management capabilities.
+A Home Assistant custom component that extends the core `netgear_lte` integration with SMS inbox management and SMS-triggered home automation commands.
+
+## Overview
+
+The core `netgear_lte` integration can send SMS but cannot read or manage the inbox. Netgear LTE modems hold around 20 messages — once full, new messages stop arriving. This component solves that with automatic inbox management, and builds on it to let trusted contacts control your home by SMS.
 
 ## Features
 
-- **List SMS Inbox** - View all messages in the modem inbox
-- **Delete SMS** - Delete specific messages by ID or in bulk
-- **Auto-cleanup Operator SMS** - Automatically remove network operator notifications and balance updates
- - **Policy-based Inbox Cleanup** - Remove old or unwanted messages using retain count, age, and whitelist
-- **Verbose Error Handling** - Clear feedback for API compatibility issues and modem communication problems
-- **Event-based Integration** - Fires events for automations and template sensors
-- **Multi-modem Support** - Manage multiple Netgear LTE modems
+- **Sidebar panel** — full inbox UI with message view, delete, contacts, and command management
+- **Auto inbox cleanup** — automatically trims the inbox when it approaches the modem limit (triggers at 18 messages, keeps the newest 10); untrusted messages deleted first
+- **Real-time polling** — checks for new messages every 15 seconds (configurable)
+- **SMS commands** — trusted contacts can trigger HA service calls by SMS (lock doors, open garage, etc.)
+- **Keyword matching** — define keywords that map to commands; execute immediately on match
+- **LLM matching** — optional Ollama-backed fuzzy matching for natural language messages; requires confirmation before executing
+- **HELP autoresponder** — trusted contacts SMS "help" to get a list of available commands
+- **Per-command enable/disable** — toggle individual commands without deleting them
+- **Trusted contacts** — only whitelisted senders can trigger commands
+- **Welcome message** — auto-send a greeting when a new contact is added
+- **Auto opt-out** — detects marketing messages containing opt-out instructions and replies STOP
+- **Services API** — all functions exposed as HA services for use in automations
 
-## Motivation
+## Prerequisites
 
-The core `netgear_lte` component provides SMS event triggers, but the modem SIM card can fill up with operator messages (balance notifications, network updates, etc.), preventing new SMS events from being received. This component fills that gap with tools to manage and clean up the inbox.
+- Home Assistant 2025.1.0 or newer
+- [netgear_lte](https://www.home-assistant.io/integrations/netgear_lte) core integration configured and working
 
 ## Installation
 
-### Via HACS (Recommended)
+This integration is not in the HACS default store. Add it as a custom repository:
 
-1. Open HACS in Home Assistant
-2. Go to "Integrations"
-3. Click the "+" button and search for "Netgear LTE SMS Manager"
-4. Click Install
-5. Restart Home Assistant
+1. In HACS, click ⋮ → **Custom Repositories**
+2. Add `murraybiscuit/hacs_netgear_lte_sms_manager` with type **Integration**
+3. Install **Netgear LTE SMS Manager** from HACS
+4. Restart Home Assistant
+5. Go to **Settings → Integrations → Add Integration** and search for **Netgear LTE SMS Manager**
 
 ### Manual Installation
 
-1. Clone this repository
-2. Copy the `custom_components/netgear_lte_sms_manager` folder into your `config/custom_components/` directory
-3. Restart Home Assistant
+Copy `custom_components/netgear_lte_sms_manager/` into your `config/custom_components/` directory and restart Home Assistant.
 
 ## Configuration
 
-The component auto-detects your `netgear_lte` modem configuration from the core integration. After installation, go to **Settings → Integrations → Netgear LTE SMS Manager** to configure:
+After adding the integration, open the sidebar panel **Netgear SMS Manager** or go to **Settings → Integrations → Netgear LTE SMS Manager → Configure** to adjust:
 
-### SMS Contacts
+| Option | Default | Description |
+|---|---|---|
+| Poll interval | 15s | How often to check the inbox |
+| Auto cleanup | On | Trim inbox automatically when near capacity |
+| Auto opt-out | On | Reply STOP to marketing messages |
+| Welcome message | (set) | SMS sent to new contacts when added |
+| LLM matching | Off | Ollama-based fuzzy command matching |
 
-Add trusted phone contacts that will be whitelisted during cleanup. Contacts are stored securely in Home Assistant (never in your git repo):
+## SMS Commands
 
-1. Go to integration Options
-2. Select "Manage Contacts"
-3. Add each contact with name and phone number
-4. Contacts are auto-assigned UUIDs for future personalization
+Commands let trusted contacts control Home Assistant by sending an SMS to your modem's SIM number.
 
-Use cases for contacts:
-- Whitelist family members to protect their messages from cleanup
-- Reference contact names in automation conditions (e.g., "trigger if SMS from Dad")
-- Enable welcome SMS feature when new contact is added (future enhancement: "reply with HELP for menu")
+### How it works
 
-### Direct Phone Numbers (Power Users)
+1. A trusted contact sends an SMS (e.g. "lock up")
+2. The integration matches the message against your commands by keyword
+3. The corresponding HA service is called (e.g. `lock.lock`)
+4. A confirmation SMS is sent back to the sender
 
-For ad-hoc whitelisting without creating a contact, go to the "Whitelist Numbers" option and add phone numbers (one per line).
+### Keyword matching
 
-### Default Cleanup Policy
+Each command has a list of trigger keywords. Any message from a trusted contact that contains one of those keywords (word boundary match) executes the command immediately.
 
-Future: Configure default `retain_count`, `retain_days`, and whether `dry_run` is on by default.
+Example command:
+- **Name**: lock front door
+- **Keywords**: lock, lock door, lock up
+- **Service**: `lock.lock`
+- **Entity**: `lock.front_door`
+- **Success reply**: Front door locked.
 
-## User Interface (Lovelace Card)
+### LLM matching (optional)
 
-A custom Lovelace card is included for visual SMS inbox management:
+When keyword matching finds no match, LLM matching (if enabled) sends the message to your Ollama instance for interpretation. Because LLM responses can be imprecise, a confirmation round-trip is required before any action is taken:
 
-### Installation
+1. Message arrives: *"Can you secure the front door?"*
+2. Component asks: *"Did you mean: lock front door? Reply YES to confirm or NO to cancel."*
+3. Sender replies YES → command executes
+4. Pending confirmation expires after 5 minutes if no reply
 
-1. In Home Assistant, register the custom card. Add this to `configuration.yaml`:
+Requires Ollama configured as a Home Assistant conversation agent. Auto-detects the Ollama URL and model from the HA config entry.
+
+### HELP autoresponder
+
+Any trusted contact can SMS **help** to get a list of enabled commands and their keywords.
+
+### Managing commands
+
+Commands are managed through the sidebar panel UI or via HA services (`add_command`, `update_command`, `remove_command`). Each command requires:
+
+- **Name** — a clear intent label (used in HELP replies and LLM prompts, e.g. "lock front door")
+- **Keywords** — one or more trigger phrases
+- **Service** — HA service to call (e.g. `lock.lock`)
+- **Entity ID** — entity to act on
+- **Success/failure replies** — optional SMS sent back to the sender
+
+## Trusted Contacts
+
+Only contacts in the trusted list can trigger commands. Manage them via the panel or services.
+
+When a contact is added with "Send welcome" enabled, the configured welcome message is sent to their number automatically.
+
+## Services
+
+All services accept an optional `host` parameter (modem IP). If omitted and only one modem is configured, it is auto-detected.
+
+| Service | Description |
+|---|---|
+| `list_inbox` | List all messages in the modem inbox |
+| `delete_sms` | Delete one or more messages by ID |
+| `cleanup_inbox` | Policy-based cleanup (retain count, age, whitelist) |
+| `get_inbox_json` | Get inbox as JSON (for template sensors) |
+| `add_contact` | Add a trusted contact |
+| `update_contact` | Update a contact's name or number |
+| `remove_contact` | Remove a contact by UUID |
+| `send_welcome` | Send the welcome message to a number |
+| `add_command` | Add an SMS command |
+| `update_command` | Update an existing command |
+| `remove_command` | Remove a command by UUID |
+| `test_command` | Test command dispatch with a synthetic message |
+
+### `test_command`
+
+Useful for testing without waiting for a real SMS. Bypasses the modem entirely.
+
 ```yaml
-lovelace:
-  resources:
-    - url: /local/community/netgear_lte_sms_manager/www/netgear-sms-card.js
-      type: module
-```
-
-2. Add the card to a dashboard:
-```yaml
-type: custom:netgear-sms-card
-host: 192.168.5.1  # (Optional) IP of modem
-```
-
-### Features
-
-- **Inbox Display**: View all messages with sender, content, and timestamp
-- **Quick Delete**: Delete individual messages
-- **Cleanup Controls**: Set retain_count, retain_days, and toggle dry_run mode
-- **Preview & Execute**: Test cleanup policy before running
-- **Real-time Status**: Shows loading/success/error messages
-
-See [Card Installation Guide](custom_components/netgear_lte_sms_manager/www/CARD_INSTALLATION.md) for detailed instructions.
-
-## Usage
-
-### Service: `list_inbox`
-
-Lists all SMS messages in the modem inbox and fires an event.
-
-```yaml
-service: netgear_lte_sms_manager.list_inbox
+service: netgear_lte_sms_manager.test_command
 data:
-  host: "192.168.5.1"  # Optional, auto-detects if only one modem
+  sender: "14255550123"   # must be a trusted contact
+  message: "lock up"
+  send_reply: false        # set true to also send the reply SMS
 ```
 
-**Event fired:** `netgear_lte_sms_manager_inbox_listed`
+## Events
 
-Data structure:
-```json
-{
-  "host": "192.168.5.1",
-  "messages": [
-    {
-      "id": 1,
-      "sender": "Dad",
-      "message": "Hi son, how are you?",
-      "timestamp": "2025-02-17T10:00:00Z"
-    }
-  ]
-}
-```
+| Event | Fired when |
+|---|---|
+| `netgear_lte_sms_manager_new_sms` | A new message arrives from any sender |
+| `netgear_lte_sms_manager_command_executed` | An SMS command is matched and executed |
+| `netgear_lte_sms_manager_auto_opt_out` | A marketing message is detected and STOP is sent |
+| `netgear_lte_sms_manager_cleanup_complete` | `cleanup_inbox` service finishes |
 
-### Service: `delete_sms`
-
-Delete specific SMS messages by their IDs.
-
-```yaml
-service: netgear_lte_sms_manager.delete_sms
-data:
-  host: "192.168.5.1"
-  sms_id: [1, 2, 3]  # ID or list of IDs
-```
-
-### Service: `cleanup_inbox`
-
-Clean up the modem SMS inbox using policy options. Useful to reclaim space
-from recurring operator messages while preserving messages you care about.
-
-```yaml
-service: netgear_lte_sms_manager.cleanup_inbox
-data:
-  host: "192.168.5.1"
-  retain_count: 24    # Keep newest 24 messages
-  retain_days: 0      # Ignore age-based retention
-  whitelist: []       # Senders to never delete
-  dry_run: true       # If true, reports what would be deleted only
-```
-
-**Event fired:** `netgear_lte_sms_manager_cleanup_complete`
-
-**Whitelist in cleanup:**
-The `cleanup_inbox` service respects saved contacts and direct phone numbers. In the `whitelist` parameter, you can specify:
-- Contact names (e.g., "Dad", "Mom") - exact match on SMS sender
-- Phone numbers (e.g., "+1234567890")
-- The service will preserve any messages from whitelisted senders
-
-Example:
-```yaml
-service: netgear_lte_sms_manager.cleanup_inbox
-data:
-  host: "192.168.5.1"
-  retain_count: 48
-  whitelist: ["Dad", "+1234567890"]  # Keep messages from these senders
-  dry_run: false
-```
-
-### Service: `get_inbox_json`
-
-Get inbox as JSON (for template sensors and integrations).
-
-```yaml
-service: netgear_lte_sms_manager.get_inbox_json
-data:
-  host: "192.168.5.1"
-```
-
-## Automation Examples
-
-### Scheduled inbox cleanup
+## Automation Example
 
 ```yaml
 automation:
-  - alias: "Cleanup SMS inbox daily"
+  - alias: "Notify on new SMS from unknown sender"
     trigger:
-      platform: time
-      at: "02:00:00"
+      platform: event
+      event_type: netgear_lte_sms_manager_new_sms
     action:
-      service: netgear_lte_sms_manager.cleanup_inbox
+      service: notify.mobile_app
       data:
-        host: "192.168.5.1"
-        retain_count: 24
-        dry_run: false
-```
-
-### Using Contacts in Automations
-
-Currently, you provide contact names/numbers as free text in the `whitelist` parameter. In future releases, we plan to:
-
-1. **Expose contact IDs as helper entities** - each contact gets its own entity so automations can reference them declaratively
-2. **Add SMS validation** - automations can require an SMS to be from a selected contact (validation enforced at runtime)
-3. **Welcome message automation** - trigger a welcome SMS when a new contact is added
-
-For now, use contact names/numbers directly in automation whitelist parameters.
-
-### List inbox on demand
-
-```yaml
-automation:
-  - alias: "List SMS inbox"
-    trigger:
-      platform: template
-      value_template: "{{ is_state('input_boolean.refresh_sms_inbox', 'on') }}"
-    action:
-      - service: netgear_lte_sms_manager.list_inbox
-      - service: input_boolean.turn_off
-        target:
-          entity_id: input_boolean.refresh_sms_inbox
+        message: "SMS from {{ trigger.event.data.sender }}: {{ trigger.event.data.message }}"
 ```
 
 ## Troubleshooting
 
-### ERROR: No netgear_lte entries configured
+**No netgear_lte entries configured** — set up the core `netgear_lte` integration first.
 
-Ensure the core `netgear_lte` integration is set up first. This component requires at least one Netgear LTE modem to be configured.
+**Commands not triggering** — check that the sender's number is in Trusted Contacts (digits only, e.g. `14255550123` not `(425) 555-0123`).
 
-### ERROR: API compatibility issue
+**LLM matching not working** — requires Ollama configured as a HA conversation agent. Check that the Ollama container is running and the model is loaded.
 
-This error indicates a breaking change in the `eternalegypt` library. Check:
-- Home Assistant version is 2025.1.0 or newer
-- `netgear_lte` component is up to date
-- Report the issue with the exact error message
-
-## Architecture
-
-This component is designed as a stateless helper that wraps the core `netgear_lte` modem connection:
-
-```
-Home Assistant
-    ├─ netgear_lte (core)
-    │   ├─ Modem connection
-    │   ├─ SMS event listener
-    │   └─ Notify service
-    │
-    └─ netgear_lte_sms_manager (this component)
-        ├─ Models (SMS, ModemConnection wrapper)
-        ├─ Helpers (config entry access)
-        └─ Services (list, delete, filter)
-```
-
-**Dependency Safety:**
-- All external API calls wrapped with verbose error handling
-- Breaking changes detected and reported clearly
-- No forking of core component code
-
-## Development
-
-### Setup
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/hass_netgear_lte_sms_manager
-cd hass_netgear_lte_sms_manager
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Install pre-commit hooks
-pre-commit install
-```
-
-### Testing
-
-```bash
-# Run all tests
-pytest tests/
-
-# Run with coverage
-pytest tests/ --cov=custom_components/netgear_lte_sms_manager
-
-# Run specific test
-pytest tests/test_models.py::TestModemConnection::test_get_sms_list_success
-```
-
-### Code Quality
-
-```bash
-# Format code
-black custom_components tests
-
-# Lint
-ruff check custom_components tests
-
-# Type check
-mypy custom_components
-```
-
-## Roadmap
-
-- [x] Lovelace card UI for inbox management
-- [x] Persistent contact list with config flow UI
-- [x] Policy-based inbox cleanup (retain count, age, whitelist)
-- [ ] SMS automation trigger (keyword matching)
-- [ ] Helper entities for contacts (for automation automation reference)
-- [ ] SMS-triggered automation validation (require contact selection)
-- [ ] Welcome SMS on new contact added
-- [ ] SMS statistics and analytics
-- [ ] Send SMS via automation actions
-- [ ] SMS filtering and rules engine
-
-## Contributing
-
-Pull requests welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Run tests and linting
-4. Submit a PR with a clear description
+**Panel not loading after update** — the panel JS URL is cache-busted by content hash on each reload. If it still shows stale content, do a hard refresh in the browser.
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Support
-
-If you find this helpful, please consider:
-- ⭐ Starring the repository
-- 🐛 Reporting bugs and requesting features
-- 📖 Improving the documentation
-- 💬 Sharing feedback and suggestions
+MIT — see LICENSE file for details.
 
 ## Credits
 
-Built on top of:
-- [Home Assistant](https://www.home-assistant.io/)
-- [eternalegypt](https://github.com/eternalegypt/eternalegypt) - Netgear modem API wrapper
-- [netgear_lte core integration](https://www.home-assistant.io/integrations/netgear_lte)
+- [eternalegypt](https://github.com/eternalegypt/eternalegypt) — Netgear modem API wrapper
+- [netgear_lte](https://www.home-assistant.io/integrations/netgear_lte) — core HA integration
