@@ -50,8 +50,7 @@ This integration is not in the HACS default store. Add it as a custom repository
 Copy `custom_components/netgear_lte_sms_manager/` into your `config/custom_components/` directory and restart Home Assistant.
 
 ## Configuration
-
-![Options screen](screenshots/panel-options.png)
+<img src="screenshots/panel-options.png" alt="Options screen" width="500"/>
 
 After adding the integration, open the sidebar panel **Netgear SMS Manager** or go to **Settings → Integrations → Netgear LTE SMS Manager → Configure** to adjust:
 
@@ -96,7 +95,7 @@ When keyword matching finds no match, LLM matching (if enabled) sends the messag
 
 Requires Ollama configured as a Home Assistant conversation agent. Auto-detects the Ollama URL and model from the HA config entry.
 
-![LLM confirmation round-trip](screenshots/mobile-llm-confirmation.png)
+<img src="screenshots/mobile-llm-confirmation.png" alt="LLM confirmation round-trip" width="250"/>
 
 #### Why Ollama directly, not the HA voice assistant?
 
@@ -122,7 +121,7 @@ Commands are managed through the sidebar panel UI or via HA services (`add_comma
 
 ## Trusted Contacts
 
-![Trusted senders](screenshots/panel-trusted-senders.png)
+<img src="screenshots/panel-trusted-senders.png" alt="Trusted senders" width="500"/>
 
 Only contacts in the trusted list can trigger commands. Manage them via the panel or services.
 
