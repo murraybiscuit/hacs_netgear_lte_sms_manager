@@ -9,10 +9,10 @@
     "netgear_lte",
     "panel_custom"
   ],
-  "documentation": "https://github.com/murraybiscuit/hacs_netgear_lte_sms_manager",
+  "documentation": "https://github.com/murraybiscuit/netgear-lte-sms-manager",
   "integration_type": "helper",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/murraybiscuit/hacs_netgear_lte_sms_manager/issues",
+  "issue_tracker": "https://github.com/murraybiscuit/netgear-lte-sms-manager/issues",
   "requirements": [],
   "version": "0.5.1"
 }
