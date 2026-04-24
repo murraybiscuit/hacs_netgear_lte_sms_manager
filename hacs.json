@@ -1,6 +1,5 @@
 {
   "name": "Netgear LTE SMS Manager",
   "homeassistant": "2025.1",
-  "render_readme": true,
-  "filename": "hacs.json"
+  "render_readme": true
 }
